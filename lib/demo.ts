@@ -1,3 +1,8 @@
+import {
+  formatFeedingInterval,
+  getBiberonRecommandation,
+  getFeedingIntervalMinutes,
+} from "./biberon";
 import type { BebebouEvent, EventType } from "./supabase";
 import { supabase } from "./supabase";
 
@@ -222,26 +227,15 @@ export function getBottlesPerDay(date_naissance: string): number {
   return 4;
 }
 
+export {
+  formatFeedingInterval,
+  getBiberonRecommandation,
+  getFeedingIntervalMinutes,
+  getRecommendedMlForBirthdate,
+} from "./biberon";
+
 export function getRecommendedMl(baby: DemoBaby): number {
-  const nbBiberons = getBottlesPerDay(baby.date_naissance);
-  const raw = (baby.poids_actuel * 150) / nbBiberons;
-  return Math.round(raw / 10) * 10;
-}
-
-export function getFeedingIntervalMinutes(date_naissance: string): number {
-  const months = getAgeInMonths(date_naissance);
-  if (months < 1) return 135;
-  if (months < 2) return 165;
-  if (months < 4) return 195;
-  return 225;
-}
-
-export function formatFeedingInterval(date_naissance: string): string {
-  const months = getAgeInMonths(date_naissance);
-  if (months < 1) return "2h-2h30";
-  if (months < 2) return "2h30-3h";
-  if (months < 4) return "3h-3h30";
-  return "3h30-4h";
+  return getBiberonRecommandation(getAgeInDays(baby.date_naissance)).ml;
 }
 
 export function computeDemoBabyMetrics(baby: DemoBaby) {

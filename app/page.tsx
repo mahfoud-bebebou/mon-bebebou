@@ -42,6 +42,7 @@ import {
 } from "@/lib/demo";
 import {
   getBiberonQuantityFeedback,
+  getBiberonRecommandation,
   getBiberonToast,
   formatBiberonCountdownTimer,
   getBiberonCountdown,
@@ -134,16 +135,6 @@ function getBabyAge(birthdate: string): string {
   if (months < 24) return `${months} mois`;
   const years = Math.floor(months / 12);
   return `${years} an${years > 1 ? "s" : ""}`;
-}
-
-function getBiberonRecommandation(ageEnJours: number) {
-  if (ageEnJours <= 14) return { ml: 75, intervalleMin: 150 };
-  if (ageEnJours <= 30) return { ml: 105, intervalleMin: 180 };
-  if (ageEnJours <= 60) return { ml: 135, intervalleMin: 180 };
-  if (ageEnJours <= 90) return { ml: 165, intervalleMin: 210 };
-  if (ageEnJours <= 180) return { ml: 180, intervalleMin: 210 };
-  if (ageEnJours <= 270) return { ml: 225, intervalleMin: 240 };
-  return { ml: 195, intervalleMin: 240 };
 }
 
 function loadBabyPoidsActuel(): string | null {

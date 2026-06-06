@@ -1,3 +1,4 @@
+import { getRecommendedMlForBirthdate } from "./biberon";
 import {
   formatExactBabyAge,
   formatFeedingInterval,
@@ -93,10 +94,11 @@ export function getContextualMessage(
 
   if (todayEvents.length === 0 && baby.date_naissance) {
     const age = formatExactBabyAge(baby.date_naissance);
+    const qty = getRecommendedMlForBirthdate(baby.date_naissance);
     const interval = formatFeedingInterval(baby.date_naissance);
     return {
       emoji: "🍼",
-      text: `Bonjour ! ${baby.prenom} a ${age} — à cet âge les bébés prennent un biberon toutes les ${interval}. Enregistrez le premier biberon de la journée`,
+      text: `Bonjour ! ${baby.prenom} a ${age} — à cet âge les bébés prennent environ ${qty}ml toutes les ${interval}. Enregistrez le premier biberon de la journée`,
     };
   }
 

@@ -1,10 +1,4 @@
-import {
-  formatExactBabyAge,
-  formatFeedingInterval,
-  getBottlesPerDay,
-  getFeedingIntervalMinutes,
-  type DemoParcours,
-} from "./demo";
+import { formatExactBabyAge, type DemoParcours } from "./demo";
 
 export type BiberonFeedback = {
   message: string;
@@ -16,13 +10,56 @@ export type BiberonCountdown = {
   overdue: boolean;
 };
 
+export type BiberonRecommandation = {
+  ml: number;
+  intervalleMin: number;
+};
+
+function ageEnJoursFromDate(dateNaissance: string): number {
+  const birth = new Date(dateNaissance);
+  const now = new Date();
+  return Math.max(
+    0,
+    Math.floor((now.getTime() - birth.getTime()) / (1000 * 60 * 60 * 24))
+  );
+}
+
+export function getBiberonRecommandation(
+  ageEnJours: number
+): BiberonRecommandation {
+  if (ageEnJours <= 14) return { ml: 75, intervalleMin: 150 };
+  if (ageEnJours <= 30) return { ml: 105, intervalleMin: 180 };
+  if (ageEnJours <= 60) return { ml: 135, intervalleMin: 180 };
+  if (ageEnJours <= 90) return { ml: 165, intervalleMin: 210 };
+  if (ageEnJours <= 180) return { ml: 180, intervalleMin: 210 };
+  if (ageEnJours <= 270) return { ml: 225, intervalleMin: 240 };
+  return { ml: 195, intervalleMin: 240 };
+}
+
+export function getRecommendedMlForBirthdate(dateNaissance: string): number {
+  return getBiberonRecommandation(ageEnJoursFromDate(dateNaissance)).ml;
+}
+
+export function getFeedingIntervalMinutes(dateNaissance: string): number {
+  return getBiberonRecommandation(ageEnJoursFromDate(dateNaissance))
+    .intervalleMin;
+}
+
+export function formatFeedingInterval(dateNaissance: string): string {
+  const { intervalleMin } = getBiberonRecommandation(
+    ageEnJoursFromDate(dateNaissance)
+  );
+  if (intervalleMin <= 150) return "2h-2h30";
+  if (intervalleMin <= 180) return "2h30-3h";
+  if (intervalleMin <= 210) return "3h-3h30";
+  return "3h30-4h";
+}
+
 export function getRecommendedMlFromProfile(
-  poids: number,
+  _poids: number,
   dateNaissance: string
 ): number {
-  const nbBiberons = getBottlesPerDay(dateNaissance);
-  const raw = (poids * 150) / nbBiberons;
-  return Math.round(raw / 10) * 10;
+  return getRecommendedMlForBirthdate(dateNaissance);
 }
 
 export function getBiberonQuantityFeedback(
