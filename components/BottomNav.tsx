@@ -6,6 +6,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { motion } from "framer-motion";
 import {
+  Baby,
   BarChart2,
   Home,
   MessageCircleHeart,
@@ -35,24 +36,31 @@ const BASE_TABS: NavTab[] = [
   {
     id: "home",
     href: "/",
-    label: "Accueil",
+    label: "🏠 Accueil",
     icon: Home,
     match: (p) => p === "/",
   },
   {
     id: "suivi",
     href: "/suivi",
-    label: "Suivi",
+    label: "📊 Suivi",
     icon: BarChart2,
     match: (p) => p.startsWith("/suivi"),
   },
   {
     id: "assistant",
     href: "/chat",
-    label: "Assistant",
+    label: "💬 Assistant",
     icon: MessageCircleHeart,
     match: (p) => p.startsWith("/chat"),
     isCenter: true,
+  },
+  {
+    id: "profil",
+    href: "/profil",
+    label: "👶 Profil",
+    icon: Baby,
+    match: (p) => p.startsWith("/profil"),
   },
 ];
 
@@ -212,11 +220,11 @@ export function BottomNav() {
 
   const accountTab: NavTab = isAuthenticated
     ? {
-        id: "profil",
-        href: "/profil",
-        label: "👤 Profil",
+        id: "compte",
+        href: "/compte",
+        label: "👤 Compte",
         icon: UserCircle,
-        match: (p) => p.startsWith("/profil"),
+        match: (p) => p.startsWith("/compte"),
       }
     : {
         id: "login",
