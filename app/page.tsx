@@ -1,6 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
@@ -149,6 +156,62 @@ function loadBabyPoidsActuel(): string | null {
   return n > 0 ? poidsActuel : null;
 }
 
+function HomeSkeleton() {
+  return (
+    <main
+      className="min-h-screen"
+      style={{ backgroundColor: "#FDF8F2" }}
+    >
+      <header
+        style={{
+          padding: "24px 20px",
+          display: "flex",
+          justifyContent: "center",
+        }}
+      >
+        <img
+          src="/logo-horizontal.png"
+          alt="Mon Bebebou"
+          style={{
+            width: "100%",
+            maxWidth: 400,
+            height: "auto",
+            display: "block",
+          }}
+        />
+      </header>
+      <div
+        style={{
+          maxWidth: 448,
+          margin: "0 auto",
+          padding: "0 16px 32px",
+        }}
+      >
+        <div
+          className="animate-pulse rounded-3xl"
+          style={{
+            height: 48,
+            backgroundColor: "#E8E0ED",
+            marginBottom: 16,
+          }}
+        />
+        <div className="grid grid-cols-2 gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="animate-pulse rounded-3xl"
+              style={{
+                height: 120,
+                backgroundColor: "#E8E0ED",
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </main>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const [events, setEvents] = useState<BebebouEvent[]>([]);
@@ -165,9 +228,10 @@ export default function Home() {
   const [teteeSein, setTeteeSein] = useState<"gauche" | "droit" | null>(null);
   const [biberonTick, setBiberonTick] = useState(0);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [babyInfo, setBabyInfo] = useState("Louise · 3 mois");
+  const [babyInfo, setBabyInfo] = useState("votre bébé");
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [skeletonRevealed, setSkeletonRevealed] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showSignupModal, setShowSignupModal] = useState(false);
   const [showBabySetupModal, setShowBabySetupModal] = useState(false);
@@ -273,82 +337,97 @@ export default function Home() {
     return null;
   }
 
+  useLayoutEffect(() => {
+    const sessionId = getOrCreateSessionId();
+    setDemoSessionId(sessionId);
+
+    const storedBaby = getDemoBaby(sessionId);
+    if (storedBaby) {
+      applyDemoBabyToUI(storedBaby);
+    } else {
+      setDemoBaby(null);
+      setBabyInfo("votre bébé");
+    }
+
+    setDemoReady(true);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSkeletonRevealed(true), 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (authChecked) setSkeletonRevealed(true);
+  }, [authChecked]);
+
   useEffect(() => {
     async function checkAuth() {
-      const supabaseClient = createSupabaseClient();
-      const {
-        data: { user },
-      } = await supabaseClient.auth.getUser();
+      try {
+        const supabaseClient = createSupabaseClient();
+        const {
+          data: { user },
+        } = await supabaseClient.auth.getUser();
 
-      if (!user) {
-        setIsAuthenticated(false);
+        if (!user) {
+          setIsAuthenticated(false);
 
-        const sessionId = getOrCreateSessionId();
-        setDemoSessionId(sessionId);
+          const sessionId = getOrCreateSessionId();
+          const storedBaby = getDemoBaby(sessionId);
 
-        const storedBaby = getDemoBaby(sessionId);
-        if (storedBaby) {
-          applyDemoBabyToUI(storedBaby);
-        } else {
-          setDemoBaby(null);
-          setBabyInfo("votre bébé");
-        }
+          try {
+            const demoEvents = await fetchDemoEvents(sessionId);
+            setEvents(demoEvents);
 
-        try {
-          const demoEvents = await fetchDemoEvents(sessionId);
-          setEvents(demoEvents);
-
-          if (
-            storedBaby &&
-            isReturningAfter24h(demoEvents) &&
-            !wasInvite24hShown(sessionId)
-          ) {
-            markInvite24hShown(sessionId);
-            setShowSignupModal(true);
+            if (
+              storedBaby &&
+              isReturningAfter24h(demoEvents) &&
+              !wasInvite24hShown(sessionId)
+            ) {
+              markInvite24hShown(sessionId);
+              setShowSignupModal(true);
+            }
+          } catch (error) {
+            console.error("Demo error:", error);
           }
 
-          setDemoReady(true);
-        } catch (error) {
-          console.error("Demo error:", error);
-          // Ne pas afficher d'erreur à l'utilisateur, continuer quand même
-          setDemoReady(true);
+          return;
         }
 
+        setIsAuthenticated(true);
+        setUserEmail(user.email ?? null);
+        setUserScopeId(user.id);
+
+        const { data: baby } = await supabase
+          .from("babies")
+          .select(
+            "prenom, date_naissance, name, birthdate, sexe, poids_naissance, parcours"
+          )
+          .limit(1)
+          .single();
+
+        if (baby) {
+          const prenom = baby.prenom ?? baby.name;
+          const birthdate = baby.date_naissance ?? baby.birthdate;
+          if (prenom && birthdate) {
+            setBabyInfo(`${prenom} · ${getBabyAge(birthdate)}`);
+            setBabyContext({
+              prenom,
+              sexe: baby.sexe ?? null,
+              date_naissance: birthdate,
+              poids_naissance: baby.poids_naissance ?? null,
+              poids_actuel:
+                loadPoidsActuel() ?? baby.poids_naissance ?? null,
+              parcours: (baby.parcours as DemoParcours) ?? null,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Auth check error:", error);
+      } finally {
         setAuthChecked(true);
-        setLoading(false);
-        return;
       }
-
-      setIsAuthenticated(true);
-      setUserEmail(user.email ?? null);
-      setUserScopeId(user.id);
-
-      const { data: baby } = await supabase
-        .from("babies")
-        .select(
-          "prenom, date_naissance, name, birthdate, sexe, poids_naissance, parcours"
-        )
-        .limit(1)
-        .single();
-
-      if (baby) {
-        const prenom = baby.prenom ?? baby.name;
-        const birthdate = baby.date_naissance ?? baby.birthdate;
-        if (prenom && birthdate) {
-          setBabyInfo(`${prenom} · ${getBabyAge(birthdate)}`);
-          setBabyContext({
-            prenom,
-            sexe: baby.sexe ?? null,
-            date_naissance: birthdate,
-            poids_naissance: baby.poids_naissance ?? null,
-            poids_actuel:
-              loadPoidsActuel() ?? baby.poids_naissance ?? null,
-            parcours: (baby.parcours as DemoParcours) ?? null,
-          });
-        }
-      }
-
-      setAuthChecked(true);
     }
 
     checkAuth();
@@ -945,20 +1024,8 @@ export default function Home() {
     );
   }, [biberonTick, lastBiberon, feedingProfile?.date_naissance]);
 
-  if (!authChecked) {
-    return (
-      <main
-        style={{
-          backgroundColor: "#FDF8F2",
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <p style={{ fontSize: 14, color: "#8B7FA0" }}>Chargement...</p>
-      </main>
-    );
+  if (!skeletonRevealed) {
+    return <HomeSkeleton />;
   }
 
   return (
@@ -1231,11 +1298,9 @@ export default function Home() {
           className="rounded-3xl px-4 py-3 shadow-md"
         >
           <p className="text-sm leading-relaxed text-[#4A3F5C]">
-            {loading
-              ? "⏰ Chargement..."
-              : demoBanner
-                ? `⏰ ${demoBanner.message}`
-                : `⏰ ${getBiberonAlert(events)}`}
+            {demoBanner
+              ? `⏰ ${demoBanner.message}`
+              : `⏰ ${getBiberonAlert(events)}`}
           </p>
         </motion.section>
 
@@ -1475,9 +1540,7 @@ export default function Home() {
             Aujourd&apos;hui
           </h2>
 
-          {loading ? (
-            <p className="text-sm text-[#8B7FA0]">Chargement...</p>
-          ) : todayEvents.length === 0 ? (
+          {todayEvents.length === 0 ? (
             <p className="text-sm text-[#8B7FA0]">
               Aucun événement — cliquez sur une carte pour commencer
             </p>
