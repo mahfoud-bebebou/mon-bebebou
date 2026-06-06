@@ -606,24 +606,27 @@ export default function ProfilPage() {
           >
             <div
               style={{
-                filter: 'blur(4px)',
-                opacity: 0.5,
+                filter: 'blur(6px)',
+                opacity: 0.45,
                 pointerEvents: 'none',
                 userSelect: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
               }}
             >
-              <p style={{ fontSize: 15, fontWeight: 700, color: '#4A3F5C', margin: '0 0 12px' }}>
-                Vos statistiques
-              </p>
-              <p style={{ fontSize: 13, color: '#4A3F5C', margin: '0 0 6px' }}>
-                Moyenne biberons/jour : 6.2
-              </p>
-              <p style={{ fontSize: 13, color: '#4A3F5C', margin: '0 0 6px' }}>
-                Intervalle moyen : 2h45
-              </p>
-              <p style={{ fontSize: 13, color: '#4A3F5C', margin: 0 }}>
-                Évolution poids : +120g cette semaine
-              </p>
+              {[72, 48, 96, 56, 80].map((height, index) => (
+                <div
+                  key={index}
+                  className="animate-pulse"
+                  style={{
+                    height,
+                    borderRadius: 10,
+                    backgroundColor: '#C4B5D4',
+                    width: index % 2 === 0 ? '100%' : '75%',
+                  }}
+                />
+              ))}
             </div>
             <div
               style={{
@@ -647,7 +650,7 @@ export default function ProfilPage() {
                   textAlign: 'center',
                 }}
               >
-                Vos statistiques
+                Vos statistiques vous attendent
               </p>
               <button
                 type="button"

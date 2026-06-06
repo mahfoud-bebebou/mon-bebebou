@@ -1295,8 +1295,13 @@ export default function Home() {
           </p>
         </motion.section>
 
-        {/* Grille 2x2 — classes Tailwind en dur (pas de variables dynamiques) */}
-        <section className="grid grid-cols-2 gap-4">
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
+          }}
+        >
           <motion.button
             type="button"
             onClick={() => handleCardClick("biberon")}
@@ -1493,8 +1498,8 @@ export default function Home() {
             transition={{ delay: 0.4 }}
             whileTap={{ scale: 0.96 }}
             whileHover={{ scale: 1.02 }}
-            className="col-span-2 rounded-3xl p-5 text-center shadow-md disabled:opacity-60"
-            style={{ backgroundColor: "#E8EAF6" }}
+            className="rounded-3xl p-5 text-center shadow-md disabled:opacity-60"
+            style={{ backgroundColor: "#E8EAF6", gridColumn: "1 / -1" }}
           >
             <p className="text-4xl">🌙</p>
             <p className="mt-2 font-bold text-[#4A3F5C]">Nuit</p>
