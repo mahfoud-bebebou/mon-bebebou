@@ -18,51 +18,44 @@ const INITIAL_MESSAGES: ChatMessage[] = [
   },
 ];
 
-const SYSTEM_PROMPT =
-  "Tu es l'assistant Mon Bebebou, spécialisé dans le sommeil, l'alimentation et le bien-être des bébés. Réponds en français, de manière rassurante et concise.";
-
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
 
   async function handleSend() {
-    const text = input.trim();
-    if (!text || sending) return;
+    const userMessage = input.trim();
+    if (!userMessage || sending) return;
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      text,
+      text: userMessage,
     };
 
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setSending(true);
 
     try {
-      const apiMessages = updatedMessages
-        .filter((m) => m.id !== "welcome")
-        .map((m) => ({ role: m.role, content: m.text }));
-
-      const res = await fetch("/api/chat", {
+      const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages, systemPrompt: SYSTEM_PROMPT }),
+        body: JSON.stringify({
+          messages: [{ role: "user", content: userMessage }],
+          systemPrompt:
+            "Tu es l'assistant parental de Mon Bebebou. Tu réponds toujours en français, tu es bienveillant et rassurant. Tu ne remplaces pas un médecin. Réponds en max 3 paragraphes courts.",
+        }),
       });
-
-      const data = await res.json();
-      const assistantText =
-        data.content?.[0]?.text ??
-        "Désolé, je n'ai pas pu répondre. Réessayez dans un instant.";
+      const data = await response.json();
+      const assistantMessage = data.content[0].text;
 
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          text: assistantText,
+          text: assistantMessage,
         },
       ]);
     } catch {
