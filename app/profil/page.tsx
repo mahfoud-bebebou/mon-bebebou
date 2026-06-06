@@ -310,31 +310,61 @@ export default function ProfilPage() {
     }
   }
 
+  const backButton = (
+    <button
+      type="button"
+      onClick={() => router.back()}
+      style={{
+        position: 'fixed',
+        top: 16,
+        left: 16,
+        zIndex: 50,
+        backgroundColor: 'white',
+        border: '1.5px solid #F0E8F5',
+        borderRadius: 20,
+        padding: '8px 16px',
+        fontSize: 14,
+        color: '#8B7FA0',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+      }}
+    >
+      ← Retour
+    </button>
+  )
+
   if (loading) {
     return (
-      <main
-        style={{
-          backgroundColor: '#FDF8F2',
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <p style={{ fontSize: 14, color: '#8B7FA0' }}>Chargement...</p>
-      </main>
+      <>
+        {backButton}
+        <main
+          style={{
+            backgroundColor: '#FDF8F2',
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <p style={{ fontSize: 14, color: '#8B7FA0' }}>Chargement...</p>
+        </main>
+      </>
     )
   }
 
   return (
-    <main
-      style={{
-        backgroundColor: '#FDF8F2',
-        minHeight: '100vh',
-        padding: '32px 16px 40px',
-        boxSizing: 'border-box',
-      }}
-    >
+    <>
+      {backButton}
+      <main
+        style={{
+          backgroundColor: '#FDF8F2',
+          minHeight: '100vh',
+          padding: '32px 16px 40px',
+          boxSizing: 'border-box',
+        }}
+      >
       <div style={{ width: '100%', maxWidth: 420, margin: '0 auto' }}>
         <header style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
           <img
@@ -736,5 +766,6 @@ export default function ProfilPage() {
         ) : null}
       </div>
     </main>
+    </>
   )
 }

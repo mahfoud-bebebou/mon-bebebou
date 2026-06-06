@@ -243,15 +243,38 @@ export default function RegisterPage() {
   }
 
   return (
-    <main
-      style={{
-        backgroundColor: "#FDF8F2",
-        minHeight: "100vh",
-        padding: "32px 16px 48px",
-        overflowY: "auto",
-        boxSizing: "border-box",
-      }}
-    >
+    <>
+      <button
+        type="button"
+        onClick={() => router.back()}
+        style={{
+          position: "fixed",
+          top: 16,
+          left: 16,
+          zIndex: 50,
+          backgroundColor: "white",
+          border: "1.5px solid #F0E8F5",
+          borderRadius: 20,
+          padding: "8px 16px",
+          fontSize: 14,
+          color: "#8B7FA0",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        ← Retour
+      </button>
+      <main
+        style={{
+          backgroundColor: "#FDF8F2",
+          minHeight: "100vh",
+          padding: "32px 16px 48px",
+          overflowY: "auto",
+          boxSizing: "border-box",
+        }}
+      >
       <div style={{ width: "100%", maxWidth: 420, margin: "0 auto" }}>
         <header
           style={{
@@ -550,5 +573,6 @@ export default function RegisterPage() {
         </button>
       </div>
     </main>
+    </>
   );
 }

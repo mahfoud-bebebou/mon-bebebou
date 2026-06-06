@@ -143,19 +143,42 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main
-      style={{
-        backgroundColor: '#FDF8F2',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '32px 16px',
-        overflowY: 'auto',
-        boxSizing: 'border-box',
-      }}
-    >
+    <>
+      <button
+        type="button"
+        onClick={() => router.back()}
+        style={{
+          position: 'fixed',
+          top: 16,
+          left: 16,
+          zIndex: 50,
+          backgroundColor: 'white',
+          border: '1.5px solid #F0E8F5',
+          borderRadius: 20,
+          padding: '8px 16px',
+          fontSize: 14,
+          color: '#8B7FA0',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
+      >
+        ← Retour
+      </button>
+      <main
+        style={{
+          backgroundColor: '#FDF8F2',
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '32px 16px',
+          overflowY: 'auto',
+          boxSizing: 'border-box',
+        }}
+      >
       <div style={{ width: '100%', maxWidth: 420 }}>
         <header style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
           <img
@@ -360,5 +383,6 @@ export default function OnboardingPage() {
         </div>
       </div>
     </main>
+    </>
   )
 }
