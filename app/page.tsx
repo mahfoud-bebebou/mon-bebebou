@@ -967,7 +967,8 @@ export default function Home() {
       <header
         className="relative"
         style={{
-          padding: "16px 20px",
+          padding: "24px 20px",
+          minHeight: "140px",
           display: "flex",
           justifyContent: "center",
         }}
