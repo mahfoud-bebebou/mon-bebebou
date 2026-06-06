@@ -131,7 +131,14 @@ export default function ProfilPage() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [demoSessionId, setDemoSessionId] = useState('')
+  const [resetMessage, setResetMessage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function handleResetDemoSession() {
+    localStorage.clear()
+    setResetMessage('Session réinitialisée ✅')
+    setTimeout(() => router.push('/'), 1000)
+  }
 
   useEffect(() => {
     const saved = loadBabyAvatar()
@@ -767,6 +774,42 @@ export default function ProfilPage() {
             <WeeklyChart data={stats.weeklyBiberons} />
           </div>
         ) : null}
+
+        {!isAuthenticated && (
+          <div style={{ marginTop: 24 }}>
+            {resetMessage && (
+              <p
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: '#4A3F5C',
+                  textAlign: 'center',
+                  margin: '0 0 12px',
+                }}
+              >
+                {resetMessage}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleResetDemoSession}
+              disabled={Boolean(resetMessage)}
+              style={{
+                backgroundColor: 'transparent',
+                border: '1.5px solid #F0E8F5',
+                color: '#8B7FA0',
+                borderRadius: 12,
+                padding: '12px 16px',
+                width: '100%',
+                fontSize: 13,
+                cursor: resetMessage ? 'default' : 'pointer',
+                opacity: resetMessage ? 0.6 : 1,
+              }}
+            >
+              🔄 Réinitialiser ma session démo
+            </button>
+          </div>
+        )}
       </div>
     </main>
     </>
