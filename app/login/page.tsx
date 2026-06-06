@@ -151,6 +151,20 @@ export default function LoginPage() {
               Créer un compte
             </button>
           </div>
+
+          <a
+            href="/"
+            style={{
+              display: "block",
+              textAlign: "center",
+              marginTop: 16,
+              fontSize: 13,
+              color: "#8B7FA0",
+              textDecoration: "none",
+            }}
+          >
+            Continuer sans compte →
+          </a>
         </div>
       </div>
     </main>

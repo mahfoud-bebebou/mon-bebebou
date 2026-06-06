@@ -6,7 +6,7 @@ import { AnimatePresence } from "framer-motion";
 import { BottomNav } from "./BottomNav";
 import { PageTransition } from "./PageTransition";
 
-const HIDDEN_NAV_PATHS = ["/login", "/register"];
+const HIDDEN_NAV_PATHS = ["/register", "/onboarding"];
 
 export function LayoutShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
