@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-opus-4-8",
         max_tokens: 1000,
         system: systemPrompt,
         messages,
