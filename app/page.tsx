@@ -1012,7 +1012,8 @@ export default function Home() {
         <img
           src="/logo-horizontal.png"
           alt="Mon Bebebou"
-          className="mx-auto h-auto w-full max-w-xs"
+          className="mx-auto h-auto w-full"
+          style={{ maxWidth: 320 }}
         />
       </header>
 
@@ -1834,25 +1835,28 @@ export default function Home() {
         <div
           style={{
             position: "fixed",
-            inset: 0,
-            zIndex: 50,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "rgba(0,0,0,0.4)",
-            padding: "16px",
+            backgroundColor: "rgba(0,0,0,0.5)",
+            zIndex: 1000,
+            padding: "20px",
             overflowY: "auto",
           }}
         >
           <div
             style={{
               width: "100%",
-              maxWidth: 380,
+              maxWidth: "420px",
+              margin: "auto",
               backgroundColor: "white",
               borderRadius: 24,
-              padding: 24,
+              padding: "28px 24px",
               boxShadow: "0 8px 32px rgba(74,63,92,0.15)",
-              margin: "auto",
             }}
           >
             <h3
