@@ -39,6 +39,7 @@ export async function middleware(request: NextRequest) {
   const isProfil = pathname.startsWith("/profil");
   const isSuivi = pathname.startsWith("/suivi");
   const isChat = pathname.startsWith("/chat");
+  const isApiChat = pathname.startsWith("/api/chat");
   const isCompte = pathname.startsWith("/compte");
 
   if (!user && isCompte) {
@@ -52,7 +53,8 @@ export async function middleware(request: NextRequest) {
     !isRegister &&
     !isProfil &&
     !isSuivi &&
-    !isChat
+    !isChat &&
+    !isApiChat
   ) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

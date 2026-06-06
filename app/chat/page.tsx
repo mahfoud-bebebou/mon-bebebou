@@ -38,7 +38,7 @@ export default function ChatPage() {
     setSending(true);
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch("/api/chat/", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
