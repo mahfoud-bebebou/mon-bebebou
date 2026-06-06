@@ -964,7 +964,14 @@ export default function Home() {
   return (
     <main className="min-h-screen" style={{ backgroundColor: "#FDF8F2" }}>
       {/* Logo + avatar */}
-      <header className="relative flex justify-center px-4 pb-2 pt-8">
+      <header
+        className="relative"
+        style={{
+          padding: "16px 20px",
+          display: "flex",
+          justifyContent: "center",
+        }}
+      >
         {isAuthenticated && userEmail && (
           <div
             className="absolute left-4 top-8 flex items-center gap-2"
@@ -1012,8 +1019,13 @@ export default function Home() {
         <img
           src="/logo-horizontal.png"
           alt="Mon Bebebou"
-          className="mx-auto h-auto w-full"
-          style={{ maxWidth: 320 }}
+          style={{
+            width: "100%",
+            maxWidth: "400px",
+            height: "auto",
+            display: "block",
+            margin: "0 auto",
+          }}
         />
       </header>
 
