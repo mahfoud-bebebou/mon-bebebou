@@ -69,7 +69,7 @@ export default function LoginPage() {
   return (
     <main
       className="flex min-h-screen flex-col items-center justify-center px-4 py-10"
-      style={{ backgroundColor: "#FDF8F2" }}
+      style={{ backgroundColor: "#FDF8F2", paddingBottom: 100 }}
     >
       <div className="w-full max-w-sm">
         <header className="mb-8 flex justify-center">
@@ -146,7 +146,11 @@ export default function LoginPage() {
               onClick={handleSignUp}
               disabled={loading || !email || !password}
               className="w-full rounded-2xl border-2 py-3 text-sm font-bold text-[#E8406A] disabled:opacity-60"
-              style={{ borderColor: "#E8406A" }}
+              style={{
+                borderColor: "#E8406A",
+                position: "relative",
+                zIndex: 10,
+              }}
             >
               Créer un compte
             </button>
