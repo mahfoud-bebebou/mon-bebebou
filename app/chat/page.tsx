@@ -18,6 +18,9 @@ const INITIAL_MESSAGES: ChatMessage[] = [
   },
 ];
 
+const SYSTEM_PROMPT =
+  "Tu es l'assistant Mon Bebebou, spécialisé dans le sommeil, l'alimentation et le bien-être des bébés. Réponds en français, de manière rassurante et concise.";
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
@@ -33,21 +36,47 @@ export default function ChatPage() {
       text,
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setInput("");
     setSending(true);
 
-    setTimeout(() => {
+    try {
+      const apiMessages = updatedMessages
+        .filter((m) => m.id !== "welcome")
+        .map((m) => ({ role: m.role, content: m.text }));
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: apiMessages, systemPrompt: SYSTEM_PROMPT }),
+      });
+
+      const data = await res.json();
+      const assistantText =
+        data.content?.[0]?.text ??
+        "Désolé, je n'ai pas pu répondre. Réessayez dans un instant.";
+
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          text: "Merci pour votre question ! L'assistant intelligent arrive bientôt — en attendant, consultez votre dashboard pour suivre les repas et le sommeil de bébé.",
+          text: assistantText,
         },
       ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: "Une erreur est survenue. Vérifiez votre connexion et réessayez.",
+        },
+      ]);
+    } finally {
       setSending(false);
-    }, 600);
+    }
   }
 
   return (
