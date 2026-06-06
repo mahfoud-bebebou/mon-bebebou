@@ -10,39 +10,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-
-  async function handleSignUp() {
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (signUpError) {
-      setError(signUpError.message);
-      setLoading(false);
-      return;
-    }
-
-    if (data.user) {
-      await supabase.from("profiles").upsert({
-        id: data.user.id,
-        email: data.user.email,
-      });
-    }
-
-    setMessage("Compte créé ! Vérifiez votre email ou connectez-vous.");
-    setLoading(false);
-  }
-
   async function handleSignIn() {
     setLoading(true);
     setError(null);
-    setMessage(null);
 
     const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email,
@@ -94,12 +64,6 @@ export default function LoginPage() {
             </p>
           )}
 
-          {message && (
-            <p className="mb-4 rounded-2xl bg-green-100 px-4 py-3 text-center text-sm text-green-700">
-              {message}
-            </p>
-          )}
-
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-[#4A3F5C]">
@@ -143,9 +107,8 @@ export default function LoginPage() {
 
             <button
               type="button"
-              onClick={handleSignUp}
-              disabled={loading || !email || !password}
-              className="w-full rounded-2xl border-2 py-3 text-sm font-bold text-[#E8406A] disabled:opacity-60"
+              onClick={() => router.push("/register")}
+              className="w-full rounded-2xl border-2 py-3 text-sm font-bold text-[#E8406A]"
               style={{
                 borderColor: "#E8406A",
                 position: "relative",
