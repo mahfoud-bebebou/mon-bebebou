@@ -94,7 +94,6 @@ import { ModalSheet } from "@/components/ModalSheet";
 import { AnimatePresence, motion } from "framer-motion";
 import { loadAuthAvatarUrl, loadBabyAvatar } from "@/lib/avatar";
 import type { BebebouEvent, EventType } from "@/lib/supabase";
-import { supabase } from "@/lib/supabase";
 
 const pleureSuggestions = [
   "Il a peut-être faim 🍼",
@@ -247,6 +246,9 @@ export default function Home() {
   const [toastKey, setToastKey] = useState(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [userScopeId, setUserScopeId] = useState("");
+  const [authenticatedBabyId, setAuthenticatedBabyId] = useState<string | null>(
+    null
+  );
   const [activeSieste, setActiveSieste] = useState<ActiveSieste | null>(null);
   const [chronoTick, setChronoTick] = useState(0);
   const [nightUiTick, setNightUiTick] = useState(0);
@@ -390,15 +392,32 @@ export default function Home() {
         setUserEmail(user.email ?? null);
         setUserScopeId(user.id);
 
-        const { data: baby } = await supabase
+        const { data: profile } = await supabaseClient
+          .from("profiles")
+          .select("family_id")
+          .eq("id", user.id)
+          .single();
+
+        let babyQuery = supabaseClient
           .from("babies")
           .select(
-            "prenom, date_naissance, name, birthdate, sexe, poids_naissance, parcours"
-          )
+            "id, prenom, date_naissance, name, birthdate, sexe, poids_naissance, parcours, family_id"
+          );
+
+        if (profile?.family_id) {
+          babyQuery = babyQuery.eq("family_id", profile.family_id);
+        }
+
+        const { data: baby, error: babyError } = await babyQuery
           .limit(1)
           .single();
 
-        if (baby) {
+        if (babyError) {
+          console.error("Baby load error:", babyError);
+        }
+
+        if (baby?.id) {
+          setAuthenticatedBabyId(baby.id);
           const prenom = baby.prenom ?? baby.name;
           const birthdate = baby.date_naissance ?? baby.birthdate;
           if (prenom && birthdate) {
@@ -413,6 +432,8 @@ export default function Home() {
               parcours: (baby.parcours as DemoParcours) ?? null,
             });
           }
+        } else {
+          setAuthenticatedBabyId(null);
         }
       } catch (error) {
         console.error("Auth check error:", error);
@@ -603,19 +624,36 @@ export default function Home() {
       return;
     }
 
+    if (!authenticatedBabyId) {
+      setError(
+        "Erreur d'enregistrement : profil bébé introuvable (baby_id manquant)"
+      );
+      setSaving(false);
+      return;
+    }
+
     const row: Record<string, unknown> = {
       type,
       note: note ?? null,
       quantity: quantity ?? null,
       user_id: user.id,
+      baby_id: authenticatedBabyId,
+      created_at: options?.createdAt ?? new Date().toISOString(),
     };
-    if (options?.createdAt) row.created_at = options.createdAt;
 
-    const { error: insertError } = await supabase.from("events").insert(row);
+    console.log("Saving event for baby:", authenticatedBabyId);
+
+    const { data, error: insertError } = await supabaseClient
+      .from("events")
+      .insert(row)
+      .select()
+      .single();
+
+    console.log("Insert result:", data, insertError);
 
     if (insertError) {
       console.error(insertError);
-      setError("Impossible d'enregistrer l'événement");
+      setError(`Erreur d'enregistrement : ${insertError.message}`);
     } else {
       await fetchEvents();
       setLastRecordedEventType(eventType);

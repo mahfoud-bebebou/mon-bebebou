@@ -8,6 +8,7 @@ export type BebebouEvent = {
   created_at: string;
   session_id?: string | null;
   user_id?: string | null;
+  baby_id?: string | null;
 };
 
 export { supabase, createClient } from "./supabase/client";
