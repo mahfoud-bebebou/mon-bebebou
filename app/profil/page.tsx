@@ -113,6 +113,56 @@ function WeeklyChart({ data }: { data: { label: string; count: number }[] }) {
   )
 }
 
+function formatDateDisplay(date: string) {
+  if (!date) return '—'
+  const [y, m, d] = date.split('-')
+  if (d && m && y) return `${d}/${m}/${y}`
+  return date
+}
+
+function formatSexeDisplay(sexe: DemoBabySexe | '') {
+  if (sexe === 'fille') return '👧 Fille'
+  if (sexe === 'garcon') return '👦 Garçon'
+  return '—'
+}
+
+function formatParcoursDisplay(parcours: DemoParcours | '') {
+  const labels: Record<DemoParcours, string> = {
+    allaite: '🤱 Allaitement',
+    artificiel: '🍼 Biberon',
+    mixte: '🤱🍼 Mixte',
+  }
+  return parcours ? labels[parcours] : '—'
+}
+
+function ReadField({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        borderRadius: 12,
+        padding: '12px 16px',
+        border: '1px solid #F0E8F5',
+        backgroundColor: 'white',
+        marginBottom: 12,
+      }}
+    >
+      <p style={{ fontSize: 12, color: '#8B7FA0', margin: '0 0 4px' }}>{label}</p>
+      <p style={{ fontSize: 15, fontWeight: 600, color: '#4A3F5C', margin: 0 }}>
+        {value || '—'}
+      </p>
+    </div>
+  )
+}
+
+type ProfileSnapshot = {
+  prenom: string
+  sexe: DemoBabySexe | ''
+  dateNaissance: string
+  poidsNaissance: string
+  poidsActuel: string
+  parcours: DemoParcours | ''
+}
+
 export default function ProfilPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -132,7 +182,41 @@ export default function ProfilPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [demoSessionId, setDemoSessionId] = useState('')
   const [resetMessage, setResetMessage] = useState<string | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [draftSnapshot, setDraftSnapshot] = useState<ProfileSnapshot | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function showToast(message: string) {
+    setToastMessage(message)
+    setTimeout(() => setToastMessage(null), 2000)
+  }
+
+  function enterEditMode() {
+    setDraftSnapshot({
+      prenom,
+      sexe,
+      dateNaissance,
+      poidsNaissance,
+      poidsActuel,
+      parcours,
+    })
+    setFormError(null)
+    setIsEditing(true)
+  }
+
+  function handleCancelEdit() {
+    if (draftSnapshot) {
+      setPrenom(draftSnapshot.prenom)
+      setSexe(draftSnapshot.sexe)
+      setDateNaissance(draftSnapshot.dateNaissance)
+      setPoidsNaissance(draftSnapshot.poidsNaissance)
+      setPoidsActuel(draftSnapshot.poidsActuel)
+      setParcours(draftSnapshot.parcours)
+    }
+    setFormError(null)
+    setIsEditing(false)
+  }
 
   function handleResetDemoSession() {
     localStorage.clear()
@@ -290,7 +374,8 @@ export default function ProfilPage() {
           parcours: parcours as DemoParcours,
         }
         saveDemoBaby(baby)
-        router.push('/')
+        setIsEditing(false)
+        showToast('✅ Profil mis à jour')
         return
       }
 
@@ -308,7 +393,11 @@ export default function ProfilPage() {
         .eq('id', babyId)
 
       if (error) throw error
-      router.push('/')
+
+      const events = await fetchEventsFromDb(userId!)
+      setStats(computeProfileStats(events, poidsNaissanceNum))
+      setIsEditing(false)
+      showToast('✅ Profil mis à jour')
     } catch (err) {
       console.error('[Profil]', err)
       setFormError('Impossible d\'enregistrer les modifications.')
@@ -364,6 +453,27 @@ export default function ProfilPage() {
   return (
     <>
       {backButton}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 100,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            borderRadius: 20,
+            padding: '10px 20px',
+            fontSize: 14,
+            fontWeight: 600,
+            zIndex: 200,
+            boxShadow: '0 4px 16px rgba(76,175,80,0.35)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {toastMessage}
+        </div>
+      )}
       <main
         style={{
           backgroundColor: '#FDF8F2',
@@ -409,26 +519,36 @@ export default function ProfilPage() {
               marginBottom: 24,
             }}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoUpload}
-              style={{ display: 'none' }}
-            />
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              style={{ borderRadius: '50%' }}
-            >
+            {isEditing ? (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  style={{ display: 'none' }}
+                />
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  style={{ borderRadius: '50%' }}
+                >
+                  <BabyAvatar
+                    prenom={prenom || '?'}
+                    photoUrl={avatarUrl}
+                    size={80}
+                    showCameraIcon
+                    onClick={() => fileInputRef.current?.click()}
+                  />
+                </motion.div>
+              </>
+            ) : (
               <BabyAvatar
                 prenom={prenom || '?'}
                 photoUrl={avatarUrl}
                 size={80}
-                showCameraIcon
-                onClick={() => fileInputRef.current?.click()}
               />
-            </motion.div>
+            )}
           </div>
 
           {formError && (
@@ -444,160 +564,203 @@ export default function ProfilPage() {
             </p>
           )}
 
-          <label style={labelStyle}>Prénom</label>
-          <input
-            type="text"
-            value={prenom}
-            onChange={(e) => {
-              setPrenom(e.target.value)
-              setFormError(null)
-            }}
-            placeholder="Prénom de votre bébé"
-            style={{ ...inputStyle, marginBottom: 16 }}
-          />
+          {!isEditing ? (
+            <>
+              <ReadField label="Prénom" value={prenom} />
+              <ReadField label="Sexe" value={formatSexeDisplay(sexe)} />
+              <ReadField
+                label="Date de naissance"
+                value={formatDateDisplay(dateNaissance)}
+              />
+              <ReadField
+                label="Poids de naissance (kg)"
+                value={poidsNaissance ? `${poidsNaissance.replace('.', ',')} kg` : '—'}
+              />
+              <ReadField
+                label="Poids actuel (kg)"
+                value={poidsActuel ? `${poidsActuel.replace('.', ',')} kg` : '—'}
+              />
+              <ReadField label="Parcours" value={formatParcoursDisplay(parcours)} />
 
-          <label style={labelStyle}>Sexe</label>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setSexe('fille')
-                setFormError(null)
-              }}
-              style={selectBtnStyle(sexe === 'fille')}
-            >
-              👧 Fille
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSexe('garcon')
-                setFormError(null)
-              }}
-              style={selectBtnStyle(sexe === 'garcon')}
-            >
-              👦 Garçon
-            </button>
-          </div>
-
-          <label style={labelStyle}>Date de naissance</label>
-          <input
-            type="date"
-            value={dateNaissance}
-            onChange={(e) => {
-              setDateNaissance(e.target.value)
-              setFormError(null)
-            }}
-            style={{ ...inputStyle, marginBottom: 16 }}
-          />
-
-          <label style={labelStyle}>Poids de naissance (kg)</label>
-          <input
-            type="number"
-            value={poidsNaissance}
-            onChange={(e) => {
-              setPoidsNaissance(e.target.value)
-              setFormError(null)
-            }}
-            placeholder="3.2"
-            step="0.1"
-            min="0.5"
-            max="8"
-            style={{ ...inputStyle, marginBottom: 16 }}
-          />
-
-          <label style={labelStyle}>Poids actuel (kg)</label>
-          <input
-            type="number"
-            value={poidsActuel}
-            onChange={(e) => {
-              setPoidsActuel(e.target.value)
-              setFormError(null)
-            }}
-            placeholder="4.5"
-            step="0.1"
-            min="0.5"
-            max="15"
-            style={{ ...inputStyle, marginBottom: 6 }}
-          />
-          <p
-            style={{
-              fontSize: 12,
-              color: '#8B7FA0',
-              marginTop: 0,
-              marginBottom: 16,
-            }}
-          >
-            Utilisé pour calculer les doses
-          </p>
-
-          <label style={labelStyle}>Parcours</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
-            {(
-              [
-                ['allaite', '🤱 Allaitement'],
-                ['artificiel', '🍼 Biberon'],
-                ['mixte', '🤱🍼 Mixte'],
-              ] as [DemoParcours, string][]
-            ).map(([value, label]) => (
               <button
-                key={value}
                 type="button"
-                onClick={() => {
-                  setParcours(value)
-                  setFormError(null)
-                }}
+                onClick={enterEditMode}
                 style={{
-                  ...selectBtnStyle(parcours === value),
-                  flex: '1 1 45%',
-                  fontSize: 13,
+                  width: '100%',
+                  marginTop: 12,
+                  padding: 14,
+                  borderRadius: 16,
+                  backgroundColor: '#E8406A',
+                  color: 'white',
+                  fontSize: 15,
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 16px rgba(232,64,106,0.35)',
                 }}
               >
-                {label}
+                ✏️ Modifier le profil
               </button>
-            ))}
-          </div>
+            </>
+          ) : (
+            <>
+              <label style={labelStyle}>Prénom</label>
+              <input
+                type="text"
+                value={prenom}
+                onChange={(e) => {
+                  setPrenom(e.target.value)
+                  setFormError(null)
+                }}
+                placeholder="Prénom de votre bébé"
+                style={{ ...inputStyle, marginBottom: 16 }}
+              />
 
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              width: '100%',
-              padding: '16px',
-              borderRadius: 14,
-              backgroundColor: '#E8406A',
-              color: 'white',
-              fontSize: 16,
-              fontWeight: 700,
-              border: 'none',
-              boxShadow: '0 4px 16px rgba(232,64,106,0.35)',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              opacity: saving ? 0.6 : 1,
-            }}
-          >
-            {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
-          </button>
+              <label style={labelStyle}>Sexe</label>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSexe('fille')
+                    setFormError(null)
+                  }}
+                  style={selectBtnStyle(sexe === 'fille')}
+                >
+                  👧 Fille
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSexe('garcon')
+                    setFormError(null)
+                  }}
+                  style={selectBtnStyle(sexe === 'garcon')}
+                >
+                  👦 Garçon
+                </button>
+              </div>
 
-          <button
-            type="button"
-            onClick={() => router.push('/')}
-            style={{
-              width: '100%',
-              marginTop: 12,
-              padding: '12px',
-              borderRadius: 14,
-              backgroundColor: 'transparent',
-              color: '#8B7FA0',
-              fontSize: 14,
-              fontWeight: 600,
-              border: 'none',
-              cursor: 'pointer',
-              textDecoration: 'underline',
-            }}
-          >
-            Retour au dashboard
-          </button>
+              <label style={labelStyle}>Date de naissance</label>
+              <input
+                type="date"
+                value={dateNaissance}
+                onChange={(e) => {
+                  setDateNaissance(e.target.value)
+                  setFormError(null)
+                }}
+                style={{ ...inputStyle, marginBottom: 16 }}
+              />
+
+              <label style={labelStyle}>Poids de naissance (kg)</label>
+              <input
+                type="number"
+                value={poidsNaissance}
+                onChange={(e) => {
+                  setPoidsNaissance(e.target.value)
+                  setFormError(null)
+                }}
+                placeholder="3.2"
+                step="0.1"
+                min="0.5"
+                max="8"
+                style={{ ...inputStyle, marginBottom: 16 }}
+              />
+
+              <label style={labelStyle}>Poids actuel (kg)</label>
+              <input
+                type="number"
+                value={poidsActuel}
+                onChange={(e) => {
+                  setPoidsActuel(e.target.value)
+                  setFormError(null)
+                }}
+                placeholder="4.5"
+                step="0.1"
+                min="0.5"
+                max="15"
+                style={{ ...inputStyle, marginBottom: 6 }}
+              />
+              <p
+                style={{
+                  fontSize: 12,
+                  color: '#8B7FA0',
+                  marginTop: 0,
+                  marginBottom: 16,
+                }}
+              >
+                Utilisé pour calculer les doses
+              </p>
+
+              <label style={labelStyle}>Parcours</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
+                {(
+                  [
+                    ['allaite', '🤱 Allaitement'],
+                    ['artificiel', '🍼 Biberon'],
+                    ['mixte', '🤱🍼 Mixte'],
+                  ] as [DemoParcours, string][]
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setParcours(value)
+                      setFormError(null)
+                    }}
+                    style={{
+                      ...selectBtnStyle(parcours === value),
+                      flex: '1 1 45%',
+                      fontSize: 13,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  disabled={saving}
+                  style={{
+                    flex: 1,
+                    padding: 14,
+                    borderRadius: 16,
+                    backgroundColor: 'white',
+                    border: '1.5px solid #F0E8F5',
+                    color: '#8B7FA0',
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  style={{
+                    flex: 2,
+                    padding: 14,
+                    borderRadius: 16,
+                    backgroundColor: '#E8406A',
+                    color: 'white',
+                    fontSize: 15,
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.6 : 1,
+                    boxShadow: '0 4px 16px rgba(232,64,106,0.35)',
+                  }}
+                >
+                  {saving ? 'Enregistrement...' : 'Enregistrer ✓'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Stats */}
