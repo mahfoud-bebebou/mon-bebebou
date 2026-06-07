@@ -84,12 +84,14 @@ export default function RejoindrePage() {
         if (!userId) throw new Error("Compte créé mais utilisateur introuvable.");
       }
 
-      const { data: familyId, error: rpcError } = await supabase.rpc(
-        "get_family_id_by_invite",
-        { p_code: code.trim().toUpperCase() }
-      );
+      const { data: family, error: familyLookupError } = await supabase
+        .from("families")
+        .select("id")
+        .eq("invite_code", code.trim().toUpperCase())
+        .maybeSingle();
 
-      if (rpcError) throw rpcError;
+      if (familyLookupError) throw familyLookupError;
+      const familyId = family?.id;
       if (!familyId) {
         setError("Code invalide — vérifie avec la personne qui t'a invité.");
         setLoading(false);
@@ -204,9 +206,7 @@ export default function RejoindrePage() {
             <input
               type="text"
               value={code}
-              onChange={(e) =>
-                setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8))
-              }
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
               placeholder="A B C 1 2 3 4 5"
               maxLength={8}
               style={{
