@@ -32,6 +32,7 @@ export default function LoginPage() {
       });
     }
 
+    localStorage.clear();
     router.push("/");
     router.refresh();
   }
