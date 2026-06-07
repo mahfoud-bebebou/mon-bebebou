@@ -17,6 +17,29 @@ export async function fetchEvents(userId: string): Promise<BebebouEvent[]> {
   return data ?? [];
 }
 
+export type EventUpdatePayload = {
+  quantity?: number | null;
+  created_at?: string;
+};
+
+export async function updateEvent(
+  eventId: string,
+  payload: EventUpdatePayload
+): Promise<void> {
+  const { error } = await supabase
+    .from("events")
+    .update(payload)
+    .eq("id", eventId);
+
+  if (error) throw error;
+}
+
+export async function deleteEvent(eventId: string): Promise<void> {
+  const { error } = await supabase.from("events").delete().eq("id", eventId);
+
+  if (error) throw error;
+}
+
 export function formatTimeShort(date: Date): string {
   const hours = date.getHours().toString().padStart(2, "0");
   const minutes = date.getMinutes().toString().padStart(2, "0");

@@ -444,6 +444,57 @@ export async function insertDemoEvent(
   }
 }
 
+export async function updateDemoEvent(
+  sessionId: string,
+  eventId: string,
+  payload: { quantity?: number | null; created_at?: string }
+): Promise<void> {
+  const { error } = await supabase
+    .from("events")
+    .update({
+      quantity: payload.quantity ?? null,
+      created_at: payload.created_at,
+    })
+    .eq("id", eventId)
+    .eq("session_id", sessionId)
+    .is("user_id", null);
+
+  if (error) {
+    if (isMissingSessionIdColumn(error)) {
+      const events = loadDemoEventsFallback(sessionId);
+      const updated = events.map((event) =>
+        event.id === eventId ? { ...event, ...payload } : event
+      );
+      saveDemoEventsFallback(sessionId, updated);
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function deleteDemoEvent(
+  sessionId: string,
+  eventId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("events")
+    .delete()
+    .eq("id", eventId)
+    .eq("session_id", sessionId)
+    .is("user_id", null);
+
+  if (error) {
+    if (isMissingSessionIdColumn(error)) {
+      const events = loadDemoEventsFallback(sessionId).filter(
+        (event) => event.id !== eventId
+      );
+      saveDemoEventsFallback(sessionId, events);
+      return;
+    }
+    throw error;
+  }
+}
+
 export async function migrateDemoEvents(
   sessionId: string,
   userId: string
