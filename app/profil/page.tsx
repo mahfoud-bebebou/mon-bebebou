@@ -558,7 +558,10 @@ export default function ProfilPage() {
         return
       }
 
-      if (!babyId) throw new Error('Bébé introuvable')
+      if (!babyId) {
+        setFormError('Bébé introuvable')
+        return
+      }
 
       const supabaseClient = createSupabaseClient()
       const { error } = await supabaseClient
@@ -575,7 +578,11 @@ export default function ProfilPage() {
         })
         .eq('id', babyId)
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase error:', error)
+        setFormError(`Erreur: ${error.message} (${error.code})`)
+        return
+      }
 
       if (monRole) {
         const profileUpdate: Record<string, unknown> = {
@@ -590,7 +597,11 @@ export default function ProfilPage() {
           .update(profileUpdate)
           .eq('id', userId!)
 
-        if (roleError) throw roleError
+        if (roleError) {
+          console.error('Supabase error:', roleError)
+          setFormError(`Erreur: ${roleError.message} (${roleError.code})`)
+          return
+        }
       }
 
       const events = await fetchEventsFromDb(userId!)
@@ -601,7 +612,11 @@ export default function ProfilPage() {
       showToast('✅ Profil mis à jour')
     } catch (err) {
       console.error('[Profil]', err)
-      setFormError('Impossible d\'enregistrer les modifications.')
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: string }).message)
+          : 'Erreur inattendue'
+      setFormError(`Erreur: ${message}`)
     } finally {
       setSaving(false)
     }
