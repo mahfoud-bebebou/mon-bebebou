@@ -566,94 +566,98 @@ export default function Home() {
     }
   }
 
-  async function loadBabyData(): Promise<AuthenticatedBaby | null> {
-    const supabaseClient = createSupabaseClient();
-    const {
-      data: { user },
-    } = await supabaseClient.auth.getUser();
+  async function loadAuthenticatedData(): Promise<AuthenticatedBaby | null> {
+    try {
+      const supabaseClient = createSupabaseClient();
+      const {
+        data: { user },
+      } = await supabaseClient.auth.getUser();
 
-    if (!user) {
-      await loadAnonymousDemoData();
+      if (!user) return null;
+
+      clearDemoLocalStorageForAuthenticatedUser();
+      resetVisitorBabyStates();
+      setDemoSessionId("");
+
+      const { data: profile, error: profileError } = await supabaseClient
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) {
+        console.error("Erreur profil:", profileError);
+        return null;
+      }
+
+      if (!profile?.family_id) {
+        console.error("Pas de family_id sur le profil");
+        return null;
+      }
+
+      setIsAuthenticated(true);
+      setUserEmail(user.email ?? null);
+      setUserScopeId(user.id);
+      setMyRole(profile.role ?? "");
+      setMyPrenom(
+        profile.prenom?.trim() ||
+          (profile.role === "papa"
+            ? profile.prenom_papa
+            : profile.prenom_maman) ||
+          profile.prenom_maman ||
+          profile.prenom_papa ||
+          ""
+      );
+
+      await supabaseClient
+        .from("profiles")
+        .update({ last_seen: new Date().toISOString() })
+        .eq("id", user.id);
+
+      const { data: membresData } = await supabaseClient
+        .from("profiles")
+        .select("id, prenom, prenom_maman, prenom_papa, role, last_seen")
+        .eq("family_id", profile.family_id);
+
+      if (membresData) setFamilyMembers(membresData as FamilyMemberProfile[]);
+
+      const { data: baby, error: babyError } = await supabaseClient
+        .from("babies")
+        .select("*")
+        .eq("family_id", profile.family_id)
+        .maybeSingle();
+
+      if (babyError) {
+        console.error("Erreur bébé:", babyError);
+        return null;
+      }
+
+      if (!baby) {
+        console.error("Bébé introuvable pour family_id:", profile.family_id);
+        setBaby(null);
+        return null;
+      }
+
+      setBaby(baby);
+      applyAuthenticatedBabyToUI(baby);
+
+      const savedMode =
+        (baby.mode_nuit as ModeNuitState | null) ?? loadModeNuit(user.id);
+      if (savedMode?.actif) {
+        setModeNuit(true);
+        setModeNuitData(savedMode);
+        if (savedMode.coucher) setNuitCoucher(savedMode.coucher);
+        saveModeNuit(user.id, savedMode);
+      }
+
+      const events = await fetchEventsByBabyId(baby.id);
+      setEvents(events);
+
+      return baby;
+    } catch (err) {
+      console.error("Erreur chargement:", err);
       return null;
     }
-
-    clearDemoLocalStorageForAuthenticatedUser();
-    resetVisitorBabyStates();
-    setDemoSessionId("");
-
-    setIsAuthenticated(true);
-    setUserEmail(user.email ?? null);
-    setUserScopeId(user.id);
-
-    const { data: profile, error: profileError } = await supabaseClient
-      .from("profiles")
-      .select("family_id, prenom_maman, prenom_papa, role, prenom")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError) {
-      console.error("Profile load error:", profileError);
-    }
-
-    if (!profile?.family_id) {
-      console.error("No family_id on profile for user", user.id);
-      setBaby(null);
-      return null;
-    }
-
-    setMyRole(profile.role ?? "");
-    setMyPrenom(
-      profile.prenom?.trim() ||
-        (profile.role === "papa"
-          ? profile.prenom_papa
-          : profile.prenom_maman) ||
-        profile.prenom_maman ||
-        profile.prenom_papa ||
-        ""
-    );
-
-    await supabaseClient
-      .from("profiles")
-      .update({ last_seen: new Date().toISOString() })
-      .eq("id", user.id);
-
-    const { data: membresData } = await supabaseClient
-      .from("profiles")
-      .select("id, prenom, prenom_maman, prenom_papa, role, last_seen")
-      .eq("family_id", profile.family_id);
-
-    if (membresData) setFamilyMembers(membresData as FamilyMemberProfile[]);
-
-    const { data: babyData, error: babyError } = await supabaseClient
-      .from("babies")
-      .select("*")
-      .eq("family_id", profile.family_id)
-      .single();
-
-    if (babyError) {
-      console.error("Baby load error:", babyError);
-    }
-
-    if (!babyData) {
-      setBaby(null);
-      return null;
-    }
-
-    setBaby(babyData);
-    console.log("Baby loaded:", babyData.id, babyData.prenom);
-    applyAuthenticatedBabyToUI(babyData);
-
-    const savedMode =
-      (babyData.mode_nuit as ModeNuitState | null) ??
-      loadModeNuit(user.id);
-    if (savedMode?.actif) {
-      setModeNuit(true);
-      setModeNuitData(savedMode);
-      if (savedMode.coucher) setNuitCoucher(savedMode.coucher);
-      saveModeNuit(user.id, savedMode);
-    }
-
-    return babyData;
   }
 
   async function syncModeNuitToBaby(state: ModeNuitState | null) {
@@ -736,18 +740,15 @@ export default function Home() {
   useEffect(() => {
     async function init() {
       try {
-        const babyData = await loadBabyData();
-        if (babyData) {
-          const supabaseClient = createSupabaseClient();
-          const {
-            data: { user },
-          } = await supabaseClient.auth.getUser();
-          if (user) {
-            const data = babyData.id
-              ? await fetchEventsByBabyId(babyData.id)
-              : await fetchEventsFromDb(user.id);
-            setEvents(data);
-          }
+        const supabaseClient = createSupabaseClient();
+        const {
+          data: { user },
+        } = await supabaseClient.auth.getUser();
+
+        if (user) {
+          await loadAuthenticatedData();
+        } else {
+          await loadAnonymousDemoData();
         }
       } catch (error) {
         console.error("Auth check error:", error);
@@ -1081,7 +1082,7 @@ export default function Home() {
 
     let babyRecord = baby;
     if (!babyRecord?.id) {
-      babyRecord = await loadBabyData();
+      babyRecord = await loadAuthenticatedData();
     }
 
     if (!babyRecord?.id) {
