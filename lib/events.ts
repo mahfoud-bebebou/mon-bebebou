@@ -1,4 +1,8 @@
 import {
+  formatCoucheLabel,
+  parseCoucheMeta,
+} from "./couche";
+import {
   getTimelineEventLabel,
   parseJsonNote,
   type SiesteNoteData,
@@ -129,8 +133,9 @@ export function getEventLabel(event: BebebouEvent): string {
       return event.quantity ? `Biberon ${event.quantity}ml` : "Biberon";
     }
     case "couche": {
+      const meta = parseCoucheMeta(event.note);
+      if (meta) return formatCoucheLabel(meta);
       if (event.note === "caca") return "Changement de couche — Selle";
-      if (event.note === "les_deux") return "Changement de couche — Pipi + Selle";
       if (event.note === "pipi") return "Changement de couche — Pipi";
       return event.note
         ? `Changement de couche — ${event.note}`

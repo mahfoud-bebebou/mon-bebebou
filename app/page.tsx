@@ -91,6 +91,24 @@ import {
 } from "@/lib/sleep";
 import { BabyAvatar } from "@/components/BabyAvatar";
 import { ModalSheet } from "@/components/ModalSheet";
+import {
+  COUCHE_TYPE_OPTIONS,
+  getCoucheDashboardAlerts,
+  getCoucheModalAlerts,
+  includesPipi,
+  includesSelle,
+  SELLE_CONSISTANCE_OPTIONS,
+  SELLE_COULEUR_OPTIONS,
+  SELLE_ODEUR_OPTIONS,
+  SELLE_QUANTITE_OPTIONS,
+  SIGNES_ASSOCIES_OPTIONS,
+  URINE_COULEUR_OPTIONS,
+  URINE_QUANTITE_OPTIONS,
+  type CoucheMeta,
+  type Intolerance,
+  type TypeCouche,
+  type TypeLait,
+} from "@/lib/couche";
 import { AnimatePresence, motion } from "framer-motion";
 import { loadAuthAvatarUrl, loadBabyAvatar } from "@/lib/avatar";
 import type { BebebouEvent, EventType } from "@/lib/supabase";
@@ -134,6 +152,8 @@ type AuthenticatedBaby = {
   parcours?: string | null;
   family_id?: string | null;
   mode_nuit?: ModeNuitState | null;
+  type_lait?: string | null;
+  intolerances?: Intolerance[] | null;
 };
 
 function createSupabaseClient() {
@@ -295,6 +315,15 @@ export default function Home() {
   const [nuitReveilsPrevus, setNuitReveilsPrevus] = useState(0);
   const [nuitLever, setNuitLever] = useState(toTimeInputValue());
   const [nuitReveilCount, setNuitReveilCount] = useState(0);
+  const [coucheHeure, setCoucheHeure] = useState(() => getCurrentTimeValue());
+  const [coucheType, setCoucheType] = useState<TypeCouche | null>(null);
+  const [urineCouleur, setUrineCouleur] = useState("jaune_pale");
+  const [urineQuantite, setUrineQuantite] = useState("normale");
+  const [selleCouleur, setSelleCouleur] = useState("jaune_moutarde");
+  const [selleConsistance, setSelleConsistance] = useState("granuleuse");
+  const [selleQuantite, setSelleQuantite] = useState("normale");
+  const [selleOdeur, setSelleOdeur] = useState("normale");
+  const [signesAssocies, setSignesAssocies] = useState<string[]>([]);
 
   function applyDemoBabyToUI(baby: DemoBaby) {
     const metrics = computeDemoBabyMetrics(baby);
@@ -308,6 +337,8 @@ export default function Home() {
       poids_naissance: baby.poids_naissance,
       poids_actuel: baby.poids_actuel,
       parcours: baby.parcours,
+      type_lait: baby.type_lait ?? null,
+      intolerances: baby.intolerances ?? null,
     });
   }
 
@@ -324,6 +355,8 @@ export default function Home() {
       poids_naissance: baby.poids_naissance,
       poids_actuel: baby.poids_actuel ?? baby.poids_naissance,
       parcours: baby.parcours,
+      type_lait: baby.type_lait ?? null,
+      intolerances: baby.intolerances ?? null,
     };
   }
 
@@ -339,6 +372,8 @@ export default function Home() {
         poids_naissance: babyData.poids_naissance ?? null,
         poids_actuel: babyData.poids_actuel ?? babyData.poids_naissance ?? null,
         parcours: (babyData.parcours as DemoParcours) ?? null,
+        type_lait: (babyData.type_lait as TypeLait) ?? null,
+        intolerances: (babyData.intolerances as Intolerance[]) ?? null,
       });
     }
   }
@@ -1067,13 +1102,60 @@ export default function Home() {
     setNightUiTick((t) => t + 1);
   }
 
+  function openCoucheModal() {
+    setCoucheHeure(getCurrentTimeValue());
+    setCoucheType(null);
+    setUrineCouleur("jaune_pale");
+    setUrineQuantite("normale");
+    setSelleCouleur("jaune_moutarde");
+    setSelleConsistance("granuleuse");
+    setSelleQuantite("normale");
+    setSelleOdeur("normale");
+    setSignesAssocies([]);
+    setError(null);
+    setActiveModal("couche");
+  }
+
+  function toggleSigneAssocie(id: string) {
+    setSignesAssocies((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+  }
+
+  function handleCoucheSubmit() {
+    if (!coucheType) {
+      setError("Sélectionne un type de couche");
+      return;
+    }
+
+    const meta: CoucheMeta = {
+      type_couche: coucheType,
+      ...(includesPipi(coucheType)
+        ? { urine_couleur: urineCouleur, urine_quantite: urineQuantite }
+        : {}),
+      ...(includesSelle(coucheType)
+        ? {
+            selle_couleur: selleCouleur,
+            selle_consistance: selleConsistance,
+            selle_quantite: selleQuantite,
+            selle_odeur: selleOdeur,
+            signes_associes: signesAssocies,
+          }
+        : {}),
+    };
+
+    addEvent("couche", serializeNote(meta), undefined, {
+      createdAt: buildCreatedAtFromTime(coucheHeure),
+    });
+  }
+
   function proceedWithCard(type: EventType) {
     switch (type) {
       case "biberon":
         openBiberonModal();
         break;
       case "couche":
-        setActiveModal("couche");
+        openCoucheModal();
         break;
       case "sieste":
       case "nuit":
@@ -1295,6 +1377,44 @@ export default function Home() {
 
   const sommeilPrenom = babyContext?.prenom ?? demoBabyName ?? "bébé";
   const feedingProfile = getFeedingProfile();
+
+  const coucheModalAlerts = useMemo(
+    () =>
+      getCoucheModalAlerts(
+        coucheType,
+        {
+          urine_couleur: urineCouleur,
+          urine_quantite: urineQuantite,
+          selle_couleur: selleCouleur,
+          selle_consistance: selleConsistance,
+          selle_quantite: selleQuantite,
+          selle_odeur: selleOdeur,
+          signes_associes: signesAssocies,
+        },
+        sommeilPrenom
+      ),
+    [
+      coucheType,
+      urineCouleur,
+      urineQuantite,
+      selleCouleur,
+      selleConsistance,
+      selleQuantite,
+      selleOdeur,
+      signesAssocies,
+      sommeilPrenom,
+    ]
+  );
+
+  const coucheDashboardAlerts = useMemo(() => {
+    if (!feedingProfile?.prenom) return [];
+    return getCoucheDashboardAlerts(
+      events,
+      feedingProfile.prenom,
+      (feedingProfile.type_lait as TypeLait) ?? null,
+      (feedingProfile.intolerances as Intolerance[]) ?? null
+    );
+  }, [events, feedingProfile]);
 
   const biberonAlert = useMemo(() => {
     void biberonTick;
@@ -1519,6 +1639,33 @@ export default function Home() {
           {dailyScore.reveils} réveils
         </motion.div>
       </div>
+
+      {coucheDashboardAlerts.map((alert) => (
+        <div
+          key={alert.message}
+          style={{
+            maxWidth: 448,
+            margin: "0 auto 12px",
+            padding: "0 16px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor:
+                alert.severity === "red" ? "#FF6B6B" : "#F5A623",
+              color: "white",
+              borderRadius: 16,
+              padding: "12px 16px",
+              fontSize: 14,
+              fontWeight: 600,
+              textAlign: "center",
+              boxShadow: "0 4px 16px rgba(74,63,92,0.12)",
+            }}
+          >
+            {alert.message}
+          </div>
+        </div>
+      ))}
 
       {showMorningPrompt && babyContext && (
         <div
@@ -2303,37 +2450,295 @@ export default function Home() {
             )}
       </ModalSheet>
 
-      <ModalSheet open={activeModal === "couche"} onClose={closeModal}>
-            <h3 className="text-lg font-bold text-[#4A3F5C]">🌿 Couche</h3>
-            <p className="mt-1 text-sm text-[#8B7FA0]">Pipi ou Caca ?</p>
-            <div className="mt-4 flex gap-3">
-              <button
-                type="button"
-                onClick={() => addEvent("couche", "pipi")}
-                disabled={saving}
-                className="flex-1 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-60"
-                style={{ backgroundColor: "#E8406A" }}
-              >
-                💧 Pipi
-              </button>
-              <button
-                type="button"
-                onClick={() => addEvent("couche", "caca")}
-                disabled={saving}
-                className="flex-1 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-60"
-                style={{ backgroundColor: "#E8406A" }}
-              >
-                💩 Caca
-              </button>
-            </div>
+      <ModalSheet open={activeModal === "couche"} onClose={closeModal} centered>
+        <h2
+          style={{
+            margin: "0 0 20px",
+            fontSize: 18,
+            fontWeight: 800,
+            color: "#4A3F5C",
+            textAlign: "center",
+          }}
+        >
+          🌿 Couche de {sommeilPrenom}
+        </h2>
+
+        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#4A3F5C", marginBottom: 6 }}>
+          Heure du change
+        </label>
+        <input
+          type="time"
+          value={coucheHeure}
+          onChange={(e) => setCoucheHeure(e.target.value)}
+          style={{
+            width: "100%",
+            borderRadius: 12,
+            padding: "14px 16px",
+            border: "1.5px solid #F0E8F5",
+            fontSize: 18,
+            textAlign: "center",
+            backgroundColor: "#FDF8F2",
+            boxSizing: "border-box",
+            marginBottom: 20,
+          }}
+        />
+
+        <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "0 0 8px" }}>Type</p>
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          {COUCHE_TYPE_OPTIONS.map((opt) => (
             <button
+              key={opt.id}
               type="button"
-              onClick={closeModal}
-              disabled={saving}
-              className="mt-3 w-full rounded-2xl bg-gray-100 py-3 text-sm text-[#8B7FA0]"
+              onClick={() => setCoucheType(opt.id)}
+              style={{
+                flex: 1,
+                borderRadius: 12,
+                padding: "12px 8px",
+                fontSize: 13,
+                fontWeight: 600,
+                border: coucheType === opt.id ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                backgroundColor: coucheType === opt.id ? "#E8406A" : "white",
+                color: coucheType === opt.id ? "white" : "#4A3F5C",
+                cursor: "pointer",
+              }}
             >
-              Annuler
+              {opt.label}
             </button>
+          ))}
+        </div>
+
+        {coucheType && includesPipi(coucheType) && (
+          <>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "0 0 8px" }}>Couleur urine</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+              {URINE_COULEUR_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setUrineCouleur(opt.id)}
+                  style={{
+                    borderRadius: 12,
+                    padding: "10px 6px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    border: urineCouleur === opt.id ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                    backgroundColor: urineCouleur === opt.id ? "#E8406A" : "white",
+                    color: urineCouleur === opt.id ? "white" : "#4A3F5C",
+                    cursor: "pointer",
+                    textAlign: "center",
+                  }}
+                >
+                  <span style={{ display: "block", fontSize: 18 }}>{opt.emoji}</span>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "0 0 8px" }}>Quantité</p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              {URINE_QUANTITE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setUrineQuantite(opt.id)}
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    padding: "10px 8px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    border: urineQuantite === opt.id ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                    backgroundColor: urineQuantite === opt.id ? "#E8406A" : "white",
+                    color: urineQuantite === opt.id ? "white" : "#4A3F5C",
+                    cursor: "pointer",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {coucheType && includesSelle(coucheType) && (
+          <>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "0 0 8px" }}>Couleur selles</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+              {SELLE_COULEUR_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSelleCouleur(opt.id)}
+                  style={{
+                    borderRadius: 12,
+                    padding: "10px 6px",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    border: selleCouleur === opt.id ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                    backgroundColor: selleCouleur === opt.id ? "#E8406A" : "white",
+                    color: selleCouleur === opt.id ? "white" : "#4A3F5C",
+                    cursor: "pointer",
+                    textAlign: "center",
+                  }}
+                >
+                  <span style={{ display: "block", fontSize: 18 }}>{opt.emoji}</span>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "0 0 8px" }}>Consistance</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
+              {SELLE_CONSISTANCE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSelleConsistance(opt.id)}
+                  style={{
+                    borderRadius: 12,
+                    padding: "10px 8px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    border: selleConsistance === opt.id ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                    backgroundColor: selleConsistance === opt.id ? "#E8406A" : "white",
+                    color: selleConsistance === opt.id ? "white" : "#4A3F5C",
+                    cursor: "pointer",
+                  }}
+                >
+                  {opt.emoji} {opt.label}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "0 0 8px" }}>Quantité</p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {SELLE_QUANTITE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSelleQuantite(opt.id)}
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    padding: "10px 8px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    border: selleQuantite === opt.id ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                    backgroundColor: selleQuantite === opt.id ? "#E8406A" : "white",
+                    color: selleQuantite === opt.id ? "white" : "#4A3F5C",
+                    cursor: "pointer",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "0 0 8px" }}>Odeur</p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+              {SELLE_ODEUR_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSelleOdeur(opt.id)}
+                  style={{
+                    flex: 1,
+                    minWidth: 90,
+                    borderRadius: 12,
+                    padding: "10px 8px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    border: selleOdeur === opt.id ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                    backgroundColor: selleOdeur === opt.id ? "#E8406A" : "white",
+                    color: selleOdeur === opt.id ? "white" : "#4A3F5C",
+                    cursor: "pointer",
+                  }}
+                >
+                  {opt.emoji} {opt.label}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "0 0 8px" }}>Signes associés</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              {SIGNES_ASSOCIES_OPTIONS.map((opt) => {
+                const checked = signesAssocies.includes(opt.id);
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => toggleSigneAssocie(opt.id)}
+                    style={{
+                      borderRadius: 12,
+                      padding: "8px 10px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      border: checked ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                      backgroundColor: checked ? "#FFF0F5" : "white",
+                      color: "#4A3F5C",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {coucheModalAlerts.map((alert) => (
+          <div
+            key={alert.message}
+            style={{
+              backgroundColor: alert.severity === "red" ? "#FF6B6B" : "#F5A623",
+              color: "white",
+              borderRadius: 12,
+              padding: "12px 14px",
+              fontSize: 13,
+              fontWeight: 600,
+              textAlign: "center",
+              marginBottom: 12,
+            }}
+          >
+            {alert.message}
+          </div>
+        ))}
+
+        <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+          <button
+            type="button"
+            onClick={closeModal}
+            disabled={saving}
+            style={{
+              flex: 1,
+              padding: 14,
+              borderRadius: 14,
+              border: "1.5px solid #F0E8F8",
+              backgroundColor: "white",
+              color: "#4A3F5C",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={handleCoucheSubmit}
+            disabled={saving || !coucheType}
+            style={{
+              flex: 1,
+              padding: 14,
+              borderRadius: 14,
+              border: "none",
+              backgroundColor: "#E8406A",
+              color: "white",
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: "pointer",
+              opacity: saving || !coucheType ? 0.6 : 1,
+            }}
+          >
+            Enregistrer ✓
+          </button>
+        </div>
       </ModalSheet>
 
       {/* Popup initialisation bébé démo */}

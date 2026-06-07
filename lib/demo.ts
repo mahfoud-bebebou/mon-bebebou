@@ -20,6 +20,8 @@ export type DemoBaby = {
   poids_naissance: number;
   poids_actuel: number;
   parcours: DemoParcours;
+  type_lait?: string | null;
+  intolerances?: string[] | null;
 };
 
 export const POIDS_NAISSANCE_KEY = "poids_naissance";
@@ -37,6 +39,8 @@ type LegacyDemoBaby = {
   poids_actuel?: number;
   poids?: number;
   parcours?: DemoParcours;
+  type_lait?: string | null;
+  intolerances?: string[] | null;
 };
 
 export function saveWeightLocalStorage(
@@ -139,6 +143,8 @@ function normalizeDemoBaby(raw: LegacyDemoBaby): DemoBaby | null {
     poids_naissance,
     poids_actuel,
     parcours: raw.parcours,
+    type_lait: raw.type_lait ?? null,
+    intolerances: raw.intolerances ?? null,
   };
 }
 

@@ -9,6 +9,12 @@ import {
   migrateDemoEvents,
   saveWeightLocalStorage,
 } from "@/lib/demo";
+import {
+  INTOLERANCE_OPTIONS,
+  TYPE_LAIT_OPTIONS,
+  type Intolerance,
+  type TypeLait,
+} from "@/lib/couche";
 
 function createSupabaseClient() {
   return createBrowserClient(
@@ -107,6 +113,8 @@ export default function RegisterPage() {
   const [babyCount, setBabyCount] = useState<BabyCount>(1);
   const [babies, setBabies] = useState<BabyForm[]>([{ ...EMPTY_BABY }]);
   const [parcours, setParcours] = useState<Parcours>("");
+  const [typeLait, setTypeLait] = useState<TypeLait | "">("");
+  const [intolerances, setIntolerances] = useState<Intolerance[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -206,6 +214,8 @@ export default function RegisterPage() {
         poids_naissance: parseWeight(baby.poidsNaissance),
         poids_actuel: parseWeight(baby.poidsActuel),
         parcours,
+        type_lait: typeLait || null,
+        intolerances: intolerances.length ? intolerances : [],
         family_id: family.id,
       }));
 
@@ -502,6 +512,73 @@ export default function RegisterPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* Section — Alimentation & Santé */}
+          <section>
+            <h2 style={sectionTitleStyle}>🍼 Alimentation &amp; Santé</h2>
+            <div style={cardStyle}>
+              <label style={labelStyle}>Type de lait</label>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginBottom: 20,
+                }}
+              >
+                {TYPE_LAIT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setTypeLait(opt.id)}
+                    disabled={loading}
+                    style={{
+                      ...selectBtnStyle(typeLait === opt.id, loading),
+                      flex: "1 1 45%",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              <label style={labelStyle}>Intolérances connues</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {INTOLERANCE_OPTIONS.map((opt) => {
+                  const selected = intolerances.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() =>
+                        setIntolerances((prev) =>
+                          selected
+                            ? prev.filter((id) => id !== opt.id)
+                            : [...prev, opt.id]
+                        )
+                      }
+                      disabled={loading}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: selected
+                          ? "2px solid #E8406A"
+                          : "1.5px solid #F0E8F5",
+                        backgroundColor: selected ? "#FFF0F5" : "white",
+                        color: "#4A3F5C",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: loading ? "not-allowed" : "pointer",
+                        opacity: loading ? 0.6 : 1,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </section>
 

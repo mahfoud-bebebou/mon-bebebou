@@ -23,6 +23,12 @@ import {
   uploadAuthAvatar,
 } from '@/lib/avatar'
 import { fetchEvents as fetchEventsFromDb } from '@/lib/events'
+import {
+  INTOLERANCE_OPTIONS,
+  TYPE_LAIT_OPTIONS,
+  type Intolerance,
+  type TypeLait,
+} from '@/lib/couche'
 import { computeProfileStats, type ProfileStats } from '@/lib/profile-stats'
 import { supabase } from '@/lib/supabase'
 
@@ -41,6 +47,8 @@ type BabyRecord = {
   poids_naissance: number | null
   poids_actuel: number | null
   parcours: string
+  type_lait?: string | null
+  intolerances?: string[] | null
 }
 
 const labelStyle = {
@@ -61,6 +69,31 @@ const inputStyle = {
   color: '#4A3F5C',
   outline: 'none',
   boxSizing: 'border-box' as const,
+}
+
+function multiSelectBtnStyle(selected: boolean) {
+  return {
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: selected ? '2px solid #E8406A' : '1.5px solid #F0E8F8',
+    backgroundColor: selected ? '#FFF0F5' : 'white',
+    color: '#4A3F5C',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer' as const,
+  }
+}
+
+function formatTypeLaitDisplay(typeLait: TypeLait | '') {
+  if (!typeLait) return '—'
+  return TYPE_LAIT_OPTIONS.find((o) => o.id === typeLait)?.label ?? typeLait
+}
+
+function formatIntolerancesDisplay(intolerances: Intolerance[]) {
+  if (!intolerances.length) return 'Aucune'
+  return intolerances
+    .map((id) => INTOLERANCE_OPTIONS.find((o) => o.id === id)?.label ?? id)
+    .join(' · ')
 }
 
 function selectBtnStyle(selected: boolean) {
@@ -162,6 +195,8 @@ type ProfileSnapshot = {
   poidsNaissance: string
   poidsActuel: string
   parcours: DemoParcours | ''
+  typeLait: TypeLait | ''
+  intolerances: Intolerance[]
 }
 
 export default function ProfilPage() {
@@ -178,6 +213,8 @@ export default function ProfilPage() {
   const [poidsNaissance, setPoidsNaissance] = useState('')
   const [poidsActuel, setPoidsActuel] = useState('')
   const [parcours, setParcours] = useState<DemoParcours | ''>('')
+  const [typeLait, setTypeLait] = useState<TypeLait | ''>('')
+  const [intolerances, setIntolerances] = useState<Intolerance[]>([])
   const [formError, setFormError] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
@@ -201,6 +238,8 @@ export default function ProfilPage() {
       poidsNaissance,
       poidsActuel,
       parcours,
+      typeLait,
+      intolerances,
     })
     setFormError(null)
     setIsEditing(true)
@@ -214,6 +253,8 @@ export default function ProfilPage() {
       setPoidsNaissance(draftSnapshot.poidsNaissance)
       setPoidsActuel(draftSnapshot.poidsActuel)
       setParcours(draftSnapshot.parcours)
+      setTypeLait(draftSnapshot.typeLait)
+      setIntolerances(draftSnapshot.intolerances)
     }
     setFormError(null)
     setIsEditing(false)
@@ -251,6 +292,8 @@ export default function ProfilPage() {
           setPoidsNaissance(String(demoBaby.poids_naissance))
           setPoidsActuel(String(demoBaby.poids_actuel))
           setParcours(demoBaby.parcours)
+          setTypeLait((demoBaby.type_lait as TypeLait) ?? '')
+          setIntolerances((demoBaby.intolerances as Intolerance[]) ?? [])
         } else {
           const pn = loadPoidsNaissance()
           const pa = loadPoidsActuel()
@@ -273,7 +316,7 @@ export default function ProfilPage() {
 
       const { data: baby } = await supabase
         .from('babies')
-        .select('id, prenom, date_naissance, sexe, poids_naissance, poids_actuel, parcours')
+        .select('id, prenom, date_naissance, sexe, poids_naissance, poids_actuel, parcours, type_lait, intolerances')
         .limit(1)
         .single()
 
@@ -295,6 +338,8 @@ export default function ProfilPage() {
           )
         )
         setParcours((record.parcours as DemoParcours) ?? '')
+        setTypeLait((record.type_lait as TypeLait) ?? '')
+        setIntolerances((record.intolerances as Intolerance[]) ?? [])
 
         const events = await fetchEventsFromDb(user.id)
         setStats(
@@ -382,6 +427,8 @@ export default function ProfilPage() {
           poids_naissance: poidsNaissanceNum,
           poids_actuel: poidsActuelNum,
           parcours: parcours as DemoParcours,
+          type_lait: typeLait || null,
+          intolerances: intolerances.length ? intolerances : null,
         }
         saveDemoBaby(baby)
         setIsEditing(false)
@@ -400,6 +447,8 @@ export default function ProfilPage() {
           poids_naissance: poidsNaissanceNum,
           poids_actuel: poidsActuelNum,
           parcours,
+          type_lait: typeLait || null,
+          intolerances: intolerances.length ? intolerances : [],
         })
         .eq('id', babyId)
 
@@ -594,6 +643,11 @@ export default function ProfilPage() {
                 value={poidsActuel ? `${poidsActuel.replace('.', ',')} kg` : '—'}
               />
               <ReadField label="Parcours" value={formatParcoursDisplay(parcours)} />
+              <ReadField label="Type de lait" value={formatTypeLaitDisplay(typeLait)} />
+              <ReadField
+                label="Intolérances connues"
+                value={formatIntolerancesDisplay(intolerances)}
+              />
 
               <button
                 type="button"
@@ -729,6 +783,64 @@ export default function ProfilPage() {
                     {label}
                   </button>
                 ))}
+              </div>
+
+              <p
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: '#8B7FA0',
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                  margin: '8px 0 12px',
+                }}
+              >
+                🍼 Alimentation &amp; Santé
+              </p>
+
+              <label style={labelStyle}>Type de lait</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {TYPE_LAIT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setTypeLait(opt.id)
+                      setFormError(null)
+                    }}
+                    style={{
+                      ...selectBtnStyle(typeLait === opt.id),
+                      flex: '1 1 45%',
+                      fontSize: 13,
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              <label style={labelStyle}>Intolérances connues</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
+                {INTOLERANCE_OPTIONS.map((opt) => {
+                  const selected = intolerances.includes(opt.id)
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setIntolerances((prev) =>
+                          selected
+                            ? prev.filter((id) => id !== opt.id)
+                            : [...prev, opt.id]
+                        )
+                        setFormError(null)
+                      }}
+                      style={multiSelectBtnStyle(selected)}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
               </div>
 
               <div style={{ display: 'flex', gap: 10 }}>

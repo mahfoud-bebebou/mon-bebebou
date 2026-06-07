@@ -16,6 +16,8 @@ export type BabyMessageContext = {
   poids_naissance?: number | null;
   poids_actuel?: number | null;
   parcours?: DemoParcours | null;
+  type_lait?: string | null;
+  intolerances?: string[] | null;
 };
 
 export type ContextualMessage = {
