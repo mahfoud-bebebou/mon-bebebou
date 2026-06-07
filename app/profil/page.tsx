@@ -39,6 +39,7 @@ type BabyRecord = {
   date_naissance: string
   sexe: string
   poids_naissance: number | null
+  poids_actuel: number | null
   parcours: string
 }
 
@@ -272,7 +273,7 @@ export default function ProfilPage() {
 
       const { data: baby } = await supabase
         .from('babies')
-        .select('id, prenom, date_naissance, sexe, poids_naissance, parcours')
+        .select('id, prenom, date_naissance, sexe, poids_naissance, poids_actuel, parcours')
         .limit(1)
         .single()
 
@@ -286,13 +287,22 @@ export default function ProfilPage() {
           record.poids_naissance ? String(record.poids_naissance) : ''
         )
         setPoidsActuel(
-          String(loadPoidsActuel() ?? record.poids_naissance ?? '')
+          String(
+            record.poids_actuel ??
+              loadPoidsActuel() ??
+              record.poids_naissance ??
+              ''
+          )
         )
         setParcours((record.parcours as DemoParcours) ?? '')
 
         const events = await fetchEventsFromDb(user.id)
         setStats(
-          computeProfileStats(events, record.poids_naissance ?? null)
+          computeProfileStats(
+            events,
+            record.poids_actuel ?? loadPoidsActuel() ?? null,
+            record.poids_naissance ?? null
+          )
         )
       }
 
@@ -388,6 +398,7 @@ export default function ProfilPage() {
           sexe,
           date_naissance: dateNaissance,
           poids_naissance: poidsNaissanceNum,
+          poids_actuel: poidsActuelNum,
           parcours,
         })
         .eq('id', babyId)
@@ -395,7 +406,9 @@ export default function ProfilPage() {
       if (error) throw error
 
       const events = await fetchEventsFromDb(userId!)
-      setStats(computeProfileStats(events, poidsNaissanceNum))
+      setStats(
+        computeProfileStats(events, poidsActuelNum, poidsNaissanceNum)
+      )
       setIsEditing(false)
       showToast('✅ Profil mis à jour')
     } catch (err) {
@@ -927,10 +940,10 @@ export default function ProfilPage() {
               }}
             >
               <p style={{ fontSize: 13, color: '#8B7FA0', margin: '0 0 4px' }}>
-                Dernier poids enregistré
+                {stats.weightLabel}
               </p>
               <p style={{ fontSize: 18, fontWeight: 700, color: '#4A3F5C', margin: 0 }}>
-                {stats.lastWeight != null ? `${stats.lastWeight} kg` : '—'}
+                {stats.displayWeight != null ? `${stats.displayWeight} kg` : '—'}
               </p>
             </div>
 

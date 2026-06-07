@@ -4,7 +4,8 @@ export type ProfileStats = {
   biberonsToday: number;
   biberonsYesterday: number;
   avgIntervalLabel: string;
-  lastWeight: number | null;
+  displayWeight: number | null;
+  weightLabel: string;
   weeklyBiberons: { label: string; count: number }[];
 };
 
@@ -27,8 +28,12 @@ function formatInterval(minutes: number): string {
 
 export function computeProfileStats(
   events: BebebouEvent[],
-  lastWeight: number | null
+  poidsActuel: number | null,
+  poidsNaissance: number | null
 ): ProfileStats {
+  const displayWeight = poidsActuel ?? poidsNaissance;
+  const weightLabel =
+    poidsActuel != null ? "Poids actuel" : "Poids de naissance";
   const now = new Date();
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
@@ -76,7 +81,8 @@ export function computeProfileStats(
     biberonsToday,
     biberonsYesterday,
     avgIntervalLabel,
-    lastWeight,
+    displayWeight,
+    weightLabel,
     weeklyBiberons,
   };
 }

@@ -46,14 +46,15 @@ function genderSuffix(sexe?: "fille" | "garcon" | null): string {
 }
 
 function toDemoBabyLike(ctx: BabyMessageContext): DemoBaby | null {
-  if (!ctx.date_naissance || !ctx.poids_actuel || !ctx.sexe) return null;
+  const poids = ctx.poids_actuel ?? ctx.poids_naissance;
+  if (!ctx.date_naissance || !poids || !ctx.sexe) return null;
   return {
     session_id: "",
     prenom: ctx.prenom,
     sexe: ctx.sexe,
     date_naissance: ctx.date_naissance,
-    poids_naissance: ctx.poids_naissance ?? ctx.poids_actuel,
-    poids_actuel: ctx.poids_actuel,
+    poids_naissance: ctx.poids_naissance ?? poids,
+    poids_actuel: poids,
     parcours: ctx.parcours ?? "artificiel",
   };
 }

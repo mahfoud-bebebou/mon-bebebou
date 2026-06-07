@@ -30,7 +30,6 @@ import {
   getDemoFeedingBanner,
   getOrCreateSessionId,
   hasDemoBaby,
-  loadPoidsActuel,
   saveWeightLocalStorage,
   insertDemoEvent,
   isReturningAfter24h,
@@ -136,14 +135,11 @@ function getBabyAge(birthdate: string): string {
   return `${years} an${years > 1 ? "s" : ""}`;
 }
 
-function loadBabyPoidsActuel(): string | null {
-  if (typeof window === "undefined") return null;
-  const poidsActuel =
-    localStorage.getItem("baby_poids_actuel") ||
-    localStorage.getItem("baby_poids");
-  if (!poidsActuel) return null;
-  const n = parseFloat(poidsActuel);
-  return n > 0 ? poidsActuel : null;
+function getEffectivePoids(baby: {
+  poids_actuel?: number | null;
+  poids_naissance?: number | null;
+}): number | null {
+  return baby.poids_actuel ?? baby.poids_naissance ?? null;
 }
 
 function HomeSkeleton() {
@@ -278,7 +274,7 @@ export default function Home() {
   }
 
   function getFeedingProfile() {
-    if (babyContext?.date_naissance && babyContext.poids_actuel) {
+    if (babyContext?.date_naissance && getEffectivePoids(babyContext)) {
       return babyContext;
     }
     const baby = demoBaby ?? getDemoBaby(demoSessionId);
@@ -288,7 +284,7 @@ export default function Home() {
       sexe: baby.sexe,
       date_naissance: baby.date_naissance,
       poids_naissance: baby.poids_naissance,
-      poids_actuel: baby.poids_actuel,
+      poids_actuel: baby.poids_actuel ?? baby.poids_naissance,
       parcours: baby.parcours,
     };
   }
@@ -401,7 +397,7 @@ export default function Home() {
         let babyQuery = supabaseClient
           .from("babies")
           .select(
-            "id, prenom, date_naissance, name, birthdate, sexe, poids_naissance, parcours, family_id"
+            "id, prenom, date_naissance, name, birthdate, sexe, poids_naissance, poids_actuel, parcours, family_id"
           );
 
         if (profile?.family_id) {
@@ -427,8 +423,7 @@ export default function Home() {
               sexe: baby.sexe ?? null,
               date_naissance: birthdate,
               poids_naissance: baby.poids_naissance ?? null,
-              poids_actuel:
-                loadPoidsActuel() ?? baby.poids_naissance ?? null,
+              poids_actuel: baby.poids_actuel ?? baby.poids_naissance ?? null,
               parcours: (baby.parcours as DemoParcours) ?? null,
             });
           }
@@ -1748,9 +1743,11 @@ export default function Home() {
                           feedingProfile.date_naissance
                         );
                         const base = `Recommandé pour ${feedingProfile.prenom} à ${age}`;
-                        const poidsActuel = loadBabyPoidsActuel();
-                        return poidsActuel
-                          ? `${base} · ${poidsActuel}kg`
+                        const poids =
+                          feedingProfile.poids_actuel ??
+                          feedingProfile.poids_naissance;
+                        return poids
+                          ? `${base} · ${poids}kg`
                           : base;
                       })()}
                     </p>
