@@ -17,6 +17,20 @@ export async function fetchEvents(userId: string): Promise<BebebouEvent[]> {
   return data ?? [];
 }
 
+export async function fetchEventsByBabyId(
+  babyId: string
+): Promise<BebebouEvent[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("baby_id", babyId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 export type EventUpdatePayload = {
   quantity?: number | null;
   created_at?: string;

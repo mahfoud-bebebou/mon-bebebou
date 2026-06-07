@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   fetchEvents as fetchEventsFromDb,
+  fetchEventsByBabyId,
   formatTimeShort,
   getCardSubtitle,
   getEventEmoji,
@@ -272,7 +273,9 @@ export default function Home() {
   const [babyContext, setBabyContext] = useState<BabyMessageContext | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastBackgroundColor, setToastBackgroundColor] = useState("#4A3F5C");
+  const [toastVisible, setToastVisible] = useState(false);
   const [toastKey, setToastKey] = useState(0);
+  const [coParentEnLigne, setCoParentEnLigne] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [userScopeId, setUserScopeId] = useState("");
   const [baby, setBaby] = useState<AuthenticatedBaby | null>(null);
@@ -472,19 +475,23 @@ export default function Home() {
     setActiveModal("biberon");
   }
 
-  function showToast(
-    message: string,
-    options?: { duration?: number; backgroundColor?: string }
-  ) {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToastMessage(message);
-    setToastBackgroundColor(options?.backgroundColor ?? "#4A3F5C");
-    setToastKey((k) => k + 1);
-    toastTimerRef.current = setTimeout(
-      () => setToastMessage(null),
-      options?.duration ?? 3000
-    );
-  }
+  const showToast = useCallback(
+    (
+      message: string,
+      options?: { duration?: number; backgroundColor?: string }
+    ) => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setToastMessage(message);
+      setToastBackgroundColor(options?.backgroundColor ?? "#4A3F5C");
+      setToastKey((k) => k + 1);
+      setToastVisible(true);
+      toastTimerRef.current = setTimeout(() => {
+        setToastVisible(false);
+        setToastMessage(null);
+      }, options?.duration ?? 3000);
+    },
+    []
+  );
 
   function validateBabySetup(): string | null {
     if (!demoBabyPrenom.trim()) return "Le prénom du bébé est obligatoire.";
@@ -537,7 +544,9 @@ export default function Home() {
             data: { user },
           } = await supabaseClient.auth.getUser();
           if (user) {
-            const data = await fetchEventsFromDb(user.id);
+            const data = babyData.id
+              ? await fetchEventsByBabyId(babyData.id)
+              : await fetchEventsFromDb(user.id);
             setEvents(data);
           }
         }
@@ -560,21 +569,124 @@ export default function Home() {
       } = await supabaseClient.auth.getUser();
       if (!user) return;
 
-      const data = await fetchEventsFromDb(user.id);
-      setEvents(data);
+      if (baby?.id) {
+        const data = await fetchEventsByBabyId(baby.id);
+        setEvents(data);
+      } else {
+        const data = await fetchEventsFromDb(user.id);
+        setEvents(data);
+      }
     } catch (err) {
       console.error(err);
       setError("Impossible de charger les événements");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [baby?.id]);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchEvents();
     }
-  }, [fetchEvents, isAuthenticated]);
+  }, [fetchEvents, isAuthenticated, baby?.id]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !baby?.id || !userScopeId) return;
+
+    const supabaseClient = createSupabaseClient();
+    const currentUserId = userScopeId;
+
+    const channel = supabaseClient
+      .channel(`baby-events-${baby.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "events",
+          filter: `baby_id=eq.${baby.id}`,
+        },
+        (payload) => {
+          const newEvent = payload.new as BebebouEvent;
+          setEvents((prev) => {
+            if (prev.some((e) => e.id === newEvent.id)) return prev;
+            return [newEvent, ...prev];
+          });
+
+          if (newEvent.user_id && newEvent.user_id !== currentUserId) {
+            const emoji = getEventEmoji(newEvent.type);
+            const label = getEventLabel(newEvent);
+            showToast(`${emoji} Co-parent vient d'enregistrer ${label}`);
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "events",
+          filter: `baby_id=eq.${baby.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as BebebouEvent;
+          setEvents((prev) =>
+            prev.map((e) => (e.id === updated.id ? updated : e))
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "events",
+          filter: `baby_id=eq.${baby.id}`,
+        },
+        (payload) => {
+          const deletedId = (payload.old as { id?: string }).id;
+          if (!deletedId) return;
+          setEvents((prev) => prev.filter((e) => e.id !== deletedId));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabaseClient.removeChannel(channel);
+    };
+  }, [baby?.id, isAuthenticated, userScopeId, showToast]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !baby?.id || !userScopeId) return;
+
+    const supabaseClient = createSupabaseClient();
+    const currentUserId = userScopeId;
+
+    type PresencePayload = { user_id: string; online_at: string };
+
+    const presenceChannel = supabaseClient
+      .channel(`presence-${baby.id}`)
+      .on("presence", { event: "sync" }, () => {
+        const state = presenceChannel.presenceState<PresencePayload>();
+        const autres = Object.values(state)
+          .flat()
+          .filter((p) => p.user_id !== currentUserId);
+        setCoParentEnLigne(autres.length > 0);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await presenceChannel.track({
+            user_id: currentUserId,
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
+
+    return () => {
+      void supabaseClient.removeChannel(presenceChannel);
+      setCoParentEnLigne(false);
+    };
+  }, [baby?.id, isAuthenticated, userScopeId]);
 
   const scopeId = isAuthenticated ? userScopeId : demoSessionId;
 
@@ -1280,7 +1392,7 @@ export default function Home() {
         {isAuthenticated && userEmail && (
           <div
             className="absolute left-4 top-8 flex items-center gap-2"
-            style={{ maxWidth: "calc(50% - 40px)" }}
+            style={{ maxWidth: "calc(100% - 120px)", flexWrap: "wrap" }}
           >
             <span
               style={{
@@ -1309,6 +1421,53 @@ export default function Home() {
             >
               Se déconnecter
             </button>
+            {baby?.id && (
+              coParentEnLigne ? (
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: "#4CAF50",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      backgroundColor: "#4CAF50",
+                      borderRadius: "50%",
+                      display: "inline-block",
+                    }}
+                  />
+                  Co-parent connecté
+                </span>
+              ) : (
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: "#8B7FA0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      backgroundColor: "#CCC",
+                      borderRadius: "50%",
+                      display: "inline-block",
+                    }}
+                  />
+                  Co-parent hors ligne
+                </span>
+              )
+            )}
           </div>
         )}
         <div
@@ -2924,26 +3083,26 @@ export default function Home() {
       </ModalSheet>
 
       <AnimatePresence>
-        {toastMessage && (
+        {toastVisible && toastMessage && (
           <motion.div
             key={toastKey}
-            initial={{ opacity: 0, y: 50, scale: 0.8, x: "-50%" }}
-            animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
-            exit={{ opacity: 0, y: 50, scale: 0.8, x: "-50%" }}
-            transition={{ type: "spring", stiffness: 400 }}
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ type: "spring", stiffness: 400, damping: 28 }}
             style={{
               position: "fixed",
-              bottom: 96,
-              left: "50%",
+              top: 70,
+              left: 16,
+              right: 16,
               backgroundColor: toastBackgroundColor,
               color: "white",
               borderRadius: 16,
-              padding: "12px 20px",
+              padding: "12px 16px",
               fontSize: 14,
               fontWeight: 600,
-              maxWidth: "calc(100% - 32px)",
               textAlign: "center",
-              zIndex: 60,
+              zIndex: 1000,
               boxShadow: "0 8px 24px rgba(74,63,92,0.25)",
             }}
           >
