@@ -37,6 +37,11 @@ import {
   markInvite8Shown,
   saveDemoBaby,
   wasInvite8Shown,
+  DEMO_STARTED_AT_KEY,
+  DEMO_SESSION_KEY,
+  DEMO_BABY_KEY,
+  POIDS_NAISSANCE_KEY,
+  POIDS_ACTUEL_KEY,
 } from "@/lib/demo";
 import {
   getBiberonQuantityFeedback,
@@ -176,6 +181,28 @@ function syncLegacyBabyLocalStorage(baby: DemoBaby) {
   localStorage.setItem("baby_poids", String(baby.poids_naissance));
   localStorage.setItem("baby_poids_actuel", String(baby.poids_actuel));
   localStorage.setItem("baby_parcours", baby.parcours);
+}
+
+function clearDemoLocalStorageForAuthenticatedUser() {
+  if (typeof window === "undefined") return;
+  [
+    "baby_prenom",
+    "baby_sexe",
+    "baby_date_naissance",
+    "baby_poids",
+    "baby_poids_actuel",
+    "baby_parcours",
+    "baby_avatar",
+    "baby_photo",
+    "demo_start_time",
+    "demo_events",
+    "bebebou-demo-events-fallback",
+    DEMO_STARTED_AT_KEY,
+    DEMO_SESSION_KEY,
+    DEMO_BABY_KEY,
+    POIDS_NAISSANCE_KEY,
+    POIDS_ACTUEL_KEY,
+  ].forEach((key) => localStorage.removeItem(key));
 }
 
 function hasLegacyBabyPrenom(): boolean {
@@ -549,6 +576,10 @@ export default function Home() {
       await loadAnonymousDemoData();
       return null;
     }
+
+    clearDemoLocalStorageForAuthenticatedUser();
+    resetVisitorBabyStates();
+    setDemoSessionId("");
 
     setIsAuthenticated(true);
     setUserEmail(user.email ?? null);
