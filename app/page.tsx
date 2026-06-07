@@ -155,6 +155,18 @@ function getEffectivePoids(baby: {
   return baby.poids_actuel ?? baby.poids_naissance ?? null;
 }
 
+function getCurrentTimeValue(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+function buildCreatedAtFromTime(selectedTime: string): string {
+  const [hours, minutes] = selectedTime.split(":");
+  const eventDate = new Date();
+  eventDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+  return eventDate.toISOString();
+}
+
 function HomeSkeleton() {
   return (
     <main
@@ -220,6 +232,7 @@ export default function Home() {
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [biberonMl, setBiberonMl] = useState("120");
   const [biberonMlEdited, setBiberonMlEdited] = useState(false);
+  const [biberonTakeTime, setBiberonTakeTime] = useState(getCurrentTimeValue);
   const [biberonInputMode, setBiberonInputMode] = useState<
     "choice" | "ml" | "tetee"
   >("ml");
@@ -401,6 +414,7 @@ export default function Home() {
       : 120;
     setBiberonMl(String(recommended));
     setBiberonMlEdited(false);
+    setBiberonTakeTime(getCurrentTimeValue());
     setTeteeMinutes("15");
     setTeteeSein(null);
     setBiberonInputMode(resolveBiberonInputMode(profile?.parcours));
@@ -949,7 +963,10 @@ export default function Home() {
       return;
     }
     const toast = getBiberonToast(quantity, profile?.date_naissance);
-    addEvent("biberon", undefined, quantity, { customToast: toast });
+    addEvent("biberon", undefined, quantity, {
+      customToast: toast,
+      createdAt: buildCreatedAtFromTime(biberonTakeTime),
+    });
   }
 
   function closeModal() {
@@ -1775,6 +1792,31 @@ export default function Home() {
                     +
                   </button>
                 </div>
+                <p
+                  style={{
+                    marginTop: 16,
+                    marginBottom: 8,
+                    fontSize: 13,
+                    color: "#8B7FA0",
+                  }}
+                >
+                  Heure de la prise
+                </p>
+                <input
+                  type="time"
+                  value={biberonTakeTime}
+                  onChange={(e) => setBiberonTakeTime(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    border: "1.5px solid #F0E8F5",
+                    fontSize: 16,
+                    backgroundColor: "#FDF8F2",
+                    textAlign: "center",
+                    boxSizing: "border-box",
+                  }}
+                />
                 {feedingProfile?.prenom && feedingProfile.date_naissance && (
                     <p
                       style={{
