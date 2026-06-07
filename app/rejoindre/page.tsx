@@ -224,7 +224,7 @@ export default function RejoindrePage() {
               type="text"
               value={prenom}
               onChange={(e) => setPrenom(e.target.value)}
-              placeholder="Samia"
+              placeholder="Ton prénom"
               style={{ ...inputStyle, marginBottom: 20 }}
             />
 
