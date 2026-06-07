@@ -117,6 +117,27 @@ export default function LoginPage() {
             >
               Créer un compte
             </button>
+
+            <button
+              type="button"
+              onClick={() => router.push("/rejoindre")}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "center",
+                marginTop: 12,
+                fontSize: 14,
+                color: "#E8406A",
+                backgroundColor: "white",
+                border: "1.5px solid #E8406A",
+                borderRadius: 16,
+                padding: "14px 16px",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              👨‍👩‍👧 Rejoindre la famille de mon co-parent
+            </button>
           </div>
 
           <a
