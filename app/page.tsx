@@ -112,6 +112,12 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { loadAuthAvatarUrl, loadBabyAvatar } from "@/lib/avatar";
 import type { BebebouEvent, EventType } from "@/lib/supabase";
+import { getRoleLabel } from "@/lib/roles";
+import {
+  type FamilyMemberProfile,
+  extractOnlineUserIds,
+  getMemberPrenom,
+} from "@/lib/family";
 
 const pleureSuggestions = [
   "Il a peut-être faim 🍼",
@@ -295,7 +301,10 @@ export default function Home() {
   const [toastBackgroundColor, setToastBackgroundColor] = useState("#4A3F5C");
   const [toastVisible, setToastVisible] = useState(false);
   const [toastKey, setToastKey] = useState(0);
-  const [coParentEnLigne, setCoParentEnLigne] = useState(false);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  const [familyMembers, setFamilyMembers] = useState<FamilyMemberProfile[]>([]);
+  const [myRole, setMyRole] = useState("");
+  const [myPrenom, setMyPrenom] = useState("");
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
@@ -423,7 +432,7 @@ export default function Home() {
 
     const { data: profile, error: profileError } = await supabaseClient
       .from("profiles")
-      .select("family_id, prenom_maman, prenom_papa")
+      .select("family_id, prenom_maman, prenom_papa, role, prenom")
       .eq("id", user.id)
       .single();
 
@@ -436,6 +445,29 @@ export default function Home() {
       setBaby(null);
       return null;
     }
+
+    setMyRole(profile.role ?? "");
+    setMyPrenom(
+      profile.prenom?.trim() ||
+        (profile.role === "papa"
+          ? profile.prenom_papa
+          : profile.prenom_maman) ||
+        profile.prenom_maman ||
+        profile.prenom_papa ||
+        ""
+    );
+
+    await supabaseClient
+      .from("profiles")
+      .update({ last_seen: new Date().toISOString() })
+      .eq("id", user.id);
+
+    const { data: membresData } = await supabaseClient
+      .from("profiles")
+      .select("id, prenom, prenom_maman, prenom_papa, role, last_seen")
+      .eq("family_id", profile.family_id);
+
+    if (membresData) setFamilyMembers(membresData as FamilyMemberProfile[]);
 
     const { data: babyData, error: babyError } = await supabaseClient
       .from("babies")
@@ -653,7 +685,12 @@ export default function Home() {
           if (newEvent.user_id && newEvent.user_id !== currentUserId) {
             const emoji = getEventEmoji(newEvent.type);
             const label = getEventLabel(newEvent);
-            showToast(`${emoji} Co-parent vient d'enregistrer ${label}`);
+            const membre = familyMembers.find((m) => m.id === newEvent.user_id);
+            const roleInfo = getRoleLabel(membre?.role);
+            const prenom = membre ? getMemberPrenom(membre) : "Quelqu'un";
+            showToast(
+              `${roleInfo.emoji} ${prenom} vient d'enregistrer ${label}`
+            );
           }
         }
       )
@@ -691,7 +728,7 @@ export default function Home() {
     return () => {
       void supabaseClient.removeChannel(channel);
     };
-  }, [baby?.id, isAuthenticated, userScopeId, showToast]);
+  }, [baby?.id, isAuthenticated, userScopeId, showToast, familyMembers]);
 
   useEffect(() => {
     if (!isAuthenticated || !baby?.id || !userScopeId) return;
@@ -705,10 +742,7 @@ export default function Home() {
       .channel(`presence-${baby.id}`)
       .on("presence", { event: "sync" }, () => {
         const state = presenceChannel.presenceState<PresencePayload>();
-        const autres = Object.values(state)
-          .flat()
-          .filter((p) => p.user_id !== currentUserId);
-        setCoParentEnLigne(autres.length > 0);
+        setOnlineUserIds(extractOnlineUserIds(state));
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
@@ -721,7 +755,7 @@ export default function Home() {
 
     return () => {
       void supabaseClient.removeChannel(presenceChannel);
-      setCoParentEnLigne(false);
+      setOnlineUserIds(new Set());
     };
   }, [baby?.id, isAuthenticated, userScopeId]);
 
@@ -1579,15 +1613,49 @@ export default function Home() {
                 <p
                   style={{
                     margin: 0,
-                    fontSize: 12,
-                    color: "#8B7FA0",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: "#4A3F5C",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {userEmail}
+                  {(() => {
+                    const roleInfo = getRoleLabel(myRole);
+                    const displayName = myPrenom || userEmail?.split("@")[0] || "Moi";
+                    return `${roleInfo.emoji} ${displayName} · ${roleInfo.label}`;
+                  })()}
                 </p>
+
+                {familyMembers.filter((m) => m.id !== userScopeId).length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    {familyMembers
+                      .filter((m) => m.id !== userScopeId)
+                      .map((membre) => {
+                        const roleInfo = getRoleLabel(membre.role);
+                        const prenom = getMemberPrenom(membre);
+                        const isOnline = onlineUserIds.has(membre.id);
+                        return (
+                          <div
+                            key={membre.id}
+                            style={{
+                              fontSize: 13,
+                              color: "#8B7FA0",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              marginBottom: 4,
+                            }}
+                          >
+                            <span>{roleInfo.emoji}</span>
+                            <span>{prenom}</span>
+                            <span>{isOnline ? "🟢" : "⚫"}</span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
 
                 <div
                   style={{
@@ -1596,42 +1664,6 @@ export default function Home() {
                     margin: "12px 0",
                   }}
                 />
-
-                {baby?.id && (
-                  <>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: coParentEnLigne ? "#4CAF50" : "#8B7FA0",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          backgroundColor: coParentEnLigne ? "#4CAF50" : "#CCC",
-                          borderRadius: "50%",
-                          display: "inline-block",
-                          flexShrink: 0,
-                        }}
-                      />
-                      {coParentEnLigne
-                        ? "Co-parent connecté"
-                        : "Co-parent hors ligne"}
-                    </div>
-
-                    <div
-                      style={{
-                        height: 1,
-                        backgroundColor: "#F0E8F8",
-                        margin: "12px 0",
-                      }}
-                    />
-                  </>
-                )}
 
                 <button
                   type="button"

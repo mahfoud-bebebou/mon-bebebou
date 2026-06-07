@@ -15,6 +15,8 @@ import {
   type Intolerance,
   type TypeLait,
 } from "@/lib/couche";
+import { RoleGrid } from "@/components/RoleGrid";
+import { generateInviteCode } from "@/lib/family";
 
 function createSupabaseClient() {
   return createBrowserClient(
@@ -115,6 +117,7 @@ export default function RegisterPage() {
   const [parcours, setParcours] = useState<Parcours>("");
   const [typeLait, setTypeLait] = useState<TypeLait | "">("");
   const [intolerances, setIntolerances] = useState<Intolerance[]>([]);
+  const [selectedRole, setSelectedRole] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,6 +145,7 @@ export default function RegisterPage() {
     if (!email.trim()) return "L'email est requis.";
     if (!password) return "Le mot de passe est requis.";
     if (!familyName.trim()) return "Le nom de famille est requis.";
+    if (!selectedRole) return "Sélectionne ton rôle dans la famille.";
     if (!momName.trim()) return "Le prénom de maman est requis.";
     if (!dadName.trim()) return "Le prénom de papa est requis.";
     if (!parcours) return "Sélectionnez votre parcours d'alimentation.";
@@ -186,24 +190,40 @@ export default function RegisterPage() {
       const userId = data.user?.id;
       if (!userId) throw new Error("Pas de user id");
 
+      const inviteCode = generateInviteCode();
       const { data: family, error: familyError } = await supabase
         .from("families")
         .insert({
           name: familyName.trim(),
           created_by: userId,
+          invite_code: inviteCode,
         })
         .select()
         .single();
 
       if (familyError) throw familyError;
 
-      const { error: profileError } = await supabase.from("profiles").upsert({
+      const monPrenom =
+        selectedRole === "maman"
+          ? momName.trim()
+          : selectedRole === "papa"
+            ? dadName.trim()
+            : momName.trim() || dadName.trim();
+
+      const profilePayload: Record<string, unknown> = {
         id: userId,
         email: email.trim(),
         prenom_maman: momName.trim(),
         prenom_papa: dadName.trim(),
         family_id: family.id,
-      });
+        role: selectedRole,
+        prenom: monPrenom,
+        last_seen: new Date().toISOString(),
+      };
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert(profilePayload);
 
       if (profileError) throw profileError;
 
@@ -363,7 +383,7 @@ export default function RegisterPage() {
                   disabled={loading}
                 />
               </div>
-              <div>
+              <div style={{ marginBottom: 20 }}>
                 <label style={labelStyle}>Prénom papa</label>
                 <input
                   type="text"
@@ -374,6 +394,13 @@ export default function RegisterPage() {
                   disabled={loading}
                 />
               </div>
+
+              <RoleGrid
+                title="Mon rôle"
+                selectedRole={selectedRole}
+                onSelect={setSelectedRole}
+                disabled={loading}
+              />
             </div>
           </section>
 
@@ -647,6 +674,24 @@ export default function RegisterPage() {
           }}
         >
           {loading ? "Création..." : "Créer mon compte"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => router.push("/rejoindre")}
+          style={{
+            display: "block",
+            width: "100%",
+            marginTop: 16,
+            background: "none",
+            border: "none",
+            fontSize: 13,
+            color: "#8B7FA0",
+            cursor: "pointer",
+            textAlign: "center",
+          }}
+        >
+          Rejoindre la famille de quelqu&apos;un →
         </button>
       </div>
     </main>
