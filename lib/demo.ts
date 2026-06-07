@@ -8,6 +8,7 @@ import { supabase } from "./supabase";
 
 export const DEMO_SESSION_KEY = "bebebou-demo-session-id";
 export const DEMO_BABY_KEY = "bebebou-demo-baby";
+export const DEMO_STARTED_AT_KEY = "bebebou-demo-started-at";
 
 export type DemoBabySexe = "fille" | "garcon";
 export type DemoParcours = "allaite" | "artificiel" | "mixte";
@@ -348,14 +349,39 @@ export function getDemoFeedingBanner(
   };
 }
 
+export function ensureDemoSessionStartedAt(): void {
+  if (typeof window === "undefined") return;
+  if (!localStorage.getItem(DEMO_STARTED_AT_KEY)) {
+    localStorage.setItem(DEMO_STARTED_AT_KEY, new Date().toISOString());
+  }
+}
+
+export function getDemoSessionStartedAt(): Date | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(DEMO_STARTED_AT_KEY);
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function isDemoSessionPast24h(): boolean {
+  const started = getDemoSessionStartedAt();
+  if (!started) return false;
+  return Date.now() - started.getTime() >= 24 * 60 * 60 * 1000;
+}
+
 export function getOrCreateSessionId(): string {
   if (typeof window === "undefined") return "";
 
   const existing = localStorage.getItem(DEMO_SESSION_KEY);
-  if (existing) return existing;
+  if (existing) {
+    ensureDemoSessionStartedAt();
+    return existing;
+  }
 
   const sessionId = crypto.randomUUID();
   localStorage.setItem(DEMO_SESSION_KEY, sessionId);
+  ensureDemoSessionStartedAt();
   return sessionId;
 }
 

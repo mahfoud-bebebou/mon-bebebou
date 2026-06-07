@@ -29,13 +29,11 @@ import {
   getDemoBaby,
   getOrCreateSessionId,
   hasDemoBaby,
+  isDemoSessionPast24h,
   saveWeightLocalStorage,
   insertDemoEvent,
-  isReturningAfter24h,
-  markInvite24hShown,
   markInvite8Shown,
   saveDemoBaby,
-  wasInvite24hShown,
   wasInvite8Shown,
 } from "@/lib/demo";
 import {
@@ -295,6 +293,7 @@ export default function Home() {
   const [pendingCardType, setPendingCardType] = useState<EventType | null>(null);
   const [pendingShare, setPendingShare] = useState(false);
   const [demoReady, setDemoReady] = useState(false);
+  const [showDemoExpiryBanner, setShowDemoExpiryBanner] = useState(false);
   const [babySetupError, setBabySetupError] = useState<string | null>(null);
   const [babyContext, setBabyContext] = useState<BabyMessageContext | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -396,20 +395,10 @@ export default function Home() {
     setUserScopeId("");
 
     const sessionId = getOrCreateSessionId();
-    const storedBaby = getDemoBaby(sessionId);
 
     try {
       const demoEvents = await fetchDemoEvents(sessionId);
       setEvents(demoEvents);
-
-      if (
-        storedBaby &&
-        isReturningAfter24h(demoEvents) &&
-        !wasInvite24hShown(sessionId)
-      ) {
-        markInvite24hShown(sessionId);
-        setShowSignupModal(true);
-      }
     } catch (error) {
       console.error("Demo error:", error);
     }
@@ -836,6 +825,14 @@ export default function Home() {
       window.removeEventListener("focus", onFocus);
     };
   }, [isAuthenticated, userScopeId, demoSessionId]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setShowDemoExpiryBanner(false);
+      return;
+    }
+    setShowDemoExpiryBanner(isDemoSessionPast24h());
+  }, [isAuthenticated, demoSessionId, events.length]);
 
   useEffect(() => {
     const interval = setInterval(() => setNightUiTick((t) => t + 1), 60000);
@@ -1436,6 +1433,8 @@ export default function Home() {
       : "À quelle heure s'est-elle réveillée ?";
 
   const sommeilPrenom = babyContext?.prenom ?? demoBabyName ?? "bébé";
+  const showPersonalData =
+    isAuthenticated || Boolean(babyContext?.prenom || demoBaby?.prenom);
   const feedingProfile = getFeedingProfile();
 
   const coucheModalAlerts = useMemo(
@@ -1451,7 +1450,7 @@ export default function Home() {
           selle_odeur: selleOdeur,
           signes_associes: signesAssocies,
         },
-        isAuthenticated ? sommeilPrenom : "votre bébé"
+        showPersonalData ? sommeilPrenom : "votre bébé"
       ),
     [
       coucheType,
@@ -1463,7 +1462,7 @@ export default function Home() {
       selleOdeur,
       signesAssocies,
       sommeilPrenom,
-      isAuthenticated,
+      showPersonalData,
     ]
   );
 
@@ -1507,13 +1506,13 @@ export default function Home() {
   );
 
   const sommeilSubtitle = useMemo(() => {
-    if (!isAuthenticated) return "Aucun enregistrement";
+    if (!showPersonalData) return "Aucun enregistrement";
     if (!lastSleepEvent) return "Aucun enregistrement";
     return getCardSubtitle(lastSleepEvent.type, events);
-  }, [lastSleepEvent, events, isAuthenticated]);
+  }, [lastSleepEvent, events, showPersonalData]);
 
   function getDashboardCardSubtitle(type: EventType) {
-    if (!isAuthenticated) return "Aucun enregistrement";
+    if (!showPersonalData) return "Aucun enregistrement";
     return getCardSubtitle(type, events);
   }
 
@@ -1551,13 +1550,13 @@ export default function Home() {
   }
 
   const biberonFeedback = useMemo(() => {
-    if (!isAuthenticated) return null;
+    if (!showPersonalData) return null;
     if (biberonInputMode !== "ml" || !biberonMlEdited) return null;
     const qty = parseInt(biberonMl, 10);
     if (!feedingProfile?.prenom) return null;
     return getBiberonQuantityFeedback(qty, recommendedMl, feedingProfile.prenom);
   }, [
-    isAuthenticated,
+    showPersonalData,
     biberonInputMode,
     biberonMl,
     biberonMlEdited,
@@ -1569,8 +1568,8 @@ export default function Home() {
     return <HomeSkeleton />;
   }
 
-  const displayBabyInfo = isAuthenticated ? babyInfo : "votre bébé";
-  const displayBabyName = isAuthenticated ? sommeilPrenom : "votre bébé";
+  const displayBabyInfo = showPersonalData ? babyInfo : "votre bébé";
+  const displayBabyName = showPersonalData ? sommeilPrenom : "votre bébé";
 
   return (
     <main className="min-h-screen" style={{ backgroundColor: "#FDF8F2" }}>
@@ -2214,11 +2213,11 @@ export default function Home() {
             Aujourd&apos;hui
           </h2>
 
-          {isAuthenticated && todayEvents.length === 0 ? (
+          {!showPersonalData || todayEvents.length === 0 ? (
             <p className="text-sm text-[#8B7FA0]">
               Aucun événement — cliquez sur une carte pour commencer
             </p>
-          ) : isAuthenticated ? (
+          ) : (
             <ul className="space-y-3">
               {todayEvents.map((event) => (
                 <li key={event.id} className="flex items-center gap-3">
@@ -2232,10 +2231,6 @@ export default function Home() {
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="text-sm text-[#8B7FA0]">
-              Aucun événement — cliquez sur une carte pour commencer
-            </p>
           )}
         </section>
 
@@ -2403,7 +2398,7 @@ export default function Home() {
                     boxSizing: "border-box",
                   }}
                 />
-                {(isAuthenticated
+                {(showPersonalData
                   ? feedingProfile?.prenom && feedingProfile.date_naissance
                   : true) && (
                     <p
@@ -2414,15 +2409,15 @@ export default function Home() {
                         textAlign: "center",
                       }}
                     >
-                      {isAuthenticated
+                      {showPersonalData && feedingProfile?.prenom && feedingProfile.date_naissance
                         ? (() => {
                             const age = formatExactBabyAge(
-                              feedingProfile!.date_naissance
+                              feedingProfile.date_naissance
                             );
-                            const base = `Recommandé pour ${feedingProfile!.prenom} à ${age}`;
+                            const base = `Recommandé pour ${feedingProfile.prenom} à ${age}`;
                             const poids =
-                              feedingProfile!.poids_actuel ??
-                              feedingProfile!.poids_naissance;
+                              feedingProfile.poids_actuel ??
+                              feedingProfile.poids_naissance;
                             return poids
                               ? `${base} · ${poids}kg`
                               : base;
@@ -2473,7 +2468,7 @@ export default function Home() {
                   min="1"
                   autoFocus
                 />
-                {isAuthenticated &&
+                {showPersonalData &&
                   feedingProfile?.prenom &&
                   feedingProfile.date_naissance && (
                   <p
@@ -3679,6 +3674,48 @@ export default function Home() {
               Annuler
             </button>
       </ModalSheet>
+
+      {!isAuthenticated && showDemoExpiryBanner && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 72,
+            left: 16,
+            right: 16,
+            zIndex: 40,
+            maxWidth: 416,
+            margin: "0 auto",
+            backgroundColor: "white",
+            border: "1px solid #F0E8F5",
+            borderRadius: 14,
+            padding: "12px 16px",
+            boxShadow: "0 4px 16px rgba(74,63,92,0.10)",
+            textAlign: "center",
+            fontSize: 13,
+            color: "#4A3F5C",
+            lineHeight: 1.5,
+          }}
+        >
+          Votre session démo expire bientôt —{" "}
+          <button
+            type="button"
+            onClick={() => router.push("/register")}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              color: "#E8406A",
+              fontWeight: 700,
+              cursor: "pointer",
+              textDecoration: "underline",
+              fontSize: 13,
+            }}
+          >
+            créez un compte
+          </button>{" "}
+          pour ne rien perdre
+        </div>
+      )}
     </main>
   );
 }
