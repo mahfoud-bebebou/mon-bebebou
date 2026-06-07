@@ -36,6 +36,13 @@ export type ActiveSieste = {
   estimatedMinutes?: number;
 };
 
+export type ModeNuitState = {
+  actif: boolean;
+  heure_debut: string;
+  coucher?: string;
+  nb_reveils_prevus?: number;
+};
+
 export const ACTIVE_SIESTE_KEY = "bebebou-active-sieste";
 export const NIGHT_DISMISS_PREFIX = "bebebou-night-dismiss-";
 export const NIGHT_BEDTIME_PREFIX = "bebebou-night-bedtime-";
@@ -253,6 +260,45 @@ export function saveActiveSieste(sieste: ActiveSieste): void {
 export function clearActiveSieste(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(ACTIVE_SIESTE_KEY);
+}
+
+export const MODE_NUIT_KEY = "mode_nuit";
+
+function modeNuitStorageKey(scopeId: string): string {
+  return `${MODE_NUIT_KEY}_${scopeId}`;
+}
+
+export function loadModeNuit(scopeId: string): ModeNuitState | null {
+  if (typeof window === "undefined" || !scopeId) return null;
+  try {
+    const raw =
+      localStorage.getItem(modeNuitStorageKey(scopeId)) ??
+      localStorage.getItem(MODE_NUIT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ModeNuitState;
+    return parsed.actif ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveModeNuit(scopeId: string, state: ModeNuitState): void {
+  if (typeof window === "undefined" || !scopeId) return;
+  localStorage.setItem(modeNuitStorageKey(scopeId), JSON.stringify(state));
+}
+
+export function clearModeNuit(scopeId: string): void {
+  if (typeof window === "undefined" || !scopeId) return;
+  localStorage.removeItem(modeNuitStorageKey(scopeId));
+  localStorage.removeItem(MODE_NUIT_KEY);
+}
+
+export function getNightModeBiberonMessage(
+  prenom: string,
+  sexe?: "fille" | "garcon" | null
+): string {
+  const verb = sexe === "fille" ? "elle mangera" : "il mangera";
+  return `🌙 Pas de panique — ${prenom} dort, ${verb} à son réveil 😴`;
 }
 
 export function genderIlElle(sexe?: "fille" | "garcon" | null): string {

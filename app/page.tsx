@@ -56,25 +56,35 @@ import {
 import {
   calcDurationBetweenTimes,
   calcSleepMinutes,
+  clearActiveSieste,
+  clearModeNuit,
   combineDateAndTime,
   countTodayReveils,
   dismissNightBanner,
+  formatChronometer,
   formatDurationCompact,
   formatDurationHM,
   genderEveille,
   genderIlElle,
   genderReveille,
   getNightAnalysis,
+  getNightModeBiberonMessage,
   getSiesteEndToast,
   hasNightRecordedToday,
   isMorningPromptHour,
   isNightBannerDismissed,
   isNightModeHour,
+  loadActiveSieste,
+  loadModeNuit,
   loadNightBedtime,
+  saveActiveSieste,
+  saveModeNuit,
   saveNightBedtime,
   serializeNote,
   SOMMEIL_REVEIL_COUNTS,
   toTimeInputValue,
+  type ActiveSieste,
+  type ModeNuitState,
   type SommeilMeta,
 } from "@/lib/sleep";
 import { BabyAvatar } from "@/components/BabyAvatar";
@@ -95,7 +105,8 @@ type ModalType =
   | "couche"
   | "pleure"
   | "sommeil_choice"
-  | "sommeil_form"
+  | "sommeil_nuit_start"
+  | "sommeil_nuit_wake"
   | null;
 
 type SleepFormType = "sieste" | "nuit";
@@ -116,6 +127,7 @@ type AuthenticatedBaby = {
   poids_actuel?: number | null;
   parcours?: string | null;
   family_id?: string | null;
+  mode_nuit?: ModeNuitState | null;
 };
 
 function createSupabaseClient() {
@@ -259,12 +271,14 @@ export default function Home() {
   const [userScopeId, setUserScopeId] = useState("");
   const [baby, setBaby] = useState<AuthenticatedBaby | null>(null);
   const [nightUiTick, setNightUiTick] = useState(0);
-  const [siesteStartTime, setSiesteStartTime] = useState(toTimeInputValue());
-  const [siesteEndTime, setSiesteEndTime] = useState(toTimeInputValue());
-  const [nuitCoucher, setNuitCoucher] = useState("21:00");
-  const [nuitLever, setNuitLever] = useState("07:00");
+  const [modeNuit, setModeNuit] = useState(false);
+  const [modeNuitData, setModeNuitData] = useState<ModeNuitState | null>(null);
+  const [activeSieste, setActiveSieste] = useState<ActiveSieste | null>(null);
+  const [chronoTick, setChronoTick] = useState(0);
+  const [nuitCoucher, setNuitCoucher] = useState(toTimeInputValue());
+  const [nuitReveilsPrevus, setNuitReveilsPrevus] = useState(0);
+  const [nuitLever, setNuitLever] = useState(toTimeInputValue());
   const [nuitReveilCount, setNuitReveilCount] = useState(0);
-  const [sleepFormType, setSleepFormType] = useState<SleepFormType | null>(null);
 
   function applyDemoBabyToUI(baby: DemoBaby) {
     const metrics = computeDemoBabyMetrics(baby);
@@ -388,7 +402,46 @@ export default function Home() {
     setBaby(babyData);
     console.log("Baby loaded:", babyData.id, babyData.prenom);
     applyAuthenticatedBabyToUI(babyData);
+
+    const savedMode =
+      (babyData.mode_nuit as ModeNuitState | null) ??
+      loadModeNuit(user.id);
+    if (savedMode?.actif) {
+      setModeNuit(true);
+      setModeNuitData(savedMode);
+      if (savedMode.coucher) setNuitCoucher(savedMode.coucher);
+      saveModeNuit(user.id, savedMode);
+    }
+
     return babyData;
+  }
+
+  async function syncModeNuitToBaby(state: ModeNuitState | null) {
+    if (!baby?.id) return;
+    const supabaseClient = createSupabaseClient();
+    const { error } = await supabaseClient
+      .from("babies")
+      .update({ mode_nuit: state })
+      .eq("id", baby.id);
+    if (error) console.error("Mode nuit sync error:", error);
+  }
+
+  function activateModeNuit(state: ModeNuitState) {
+    const id = isAuthenticated ? userScopeId : demoSessionId;
+    if (!id) return;
+    saveModeNuit(id, state);
+    setModeNuit(true);
+    setModeNuitData(state);
+    void syncModeNuitToBaby(state);
+  }
+
+  function deactivateModeNuit() {
+    const id = isAuthenticated ? userScopeId : demoSessionId;
+    if (!id) return;
+    clearModeNuit(id);
+    setModeNuit(false);
+    setModeNuitData(null);
+    void syncModeNuitToBaby(null);
   }
 
   function openBiberonModal() {
@@ -504,6 +557,23 @@ export default function Home() {
   }, [fetchEvents, isAuthenticated]);
 
   const scopeId = isAuthenticated ? userScopeId : demoSessionId;
+
+  useEffect(() => {
+    if (!scopeId) return;
+    const saved = loadModeNuit(scopeId);
+    if (saved?.actif) {
+      setModeNuit(true);
+      setModeNuitData(saved);
+      if (saved.coucher) setNuitCoucher(saved.coucher);
+    }
+    setActiveSieste(loadActiveSieste(scopeId));
+  }, [scopeId]);
+
+  useEffect(() => {
+    if (!activeSieste) return;
+    const interval = setInterval(() => setChronoTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [activeSieste]);
 
   useEffect(() => {
     function syncAvatarFromStorage() {
@@ -702,84 +772,112 @@ export default function Home() {
   }
 
   function openSommeilChoice() {
-    setSleepFormType(null);
     setError(null);
     setActiveModal("sommeil_choice");
   }
 
-  function openSommeilForm(type: SleepFormType) {
-    setSleepFormType(type);
-    if (type === "sieste") {
-      const now = toTimeInputValue();
-      setSiesteStartTime(now);
-      setSiesteEndTime(now);
-    } else {
-      setNuitCoucher(loadNightBedtime() ?? "21:00");
-      setNuitLever(toTimeInputValue());
-      setNuitReveilCount(0);
-    }
-    setActiveModal("sommeil_form");
+  function handleStartSieste() {
+    const id = isAuthenticated ? userScopeId : demoSessionId;
+    if (!id) return;
+    const start = new Date().toISOString();
+    const sieste: ActiveSieste = { scopeId: id, start };
+    saveActiveSieste(sieste);
+    setActiveSieste(sieste);
+    setActiveModal(null);
   }
 
-  function openSommeilNuitForm() {
-    openSommeilForm("nuit");
-  }
-
-  function handleSommeilTypeSelect(type: SleepFormType) {
-    openSommeilForm(type);
-  }
-
-  function handleSiesteSubmit() {
-    const ctx = babyContext ?? (demoBaby ? {
-      prenom: demoBaby.prenom,
-      date_naissance: demoBaby.date_naissance,
-    } : null);
+  function handleEndSieste() {
+    if (!activeSieste) return;
+    const ctx = babyContext ?? (demoBaby ? { prenom: demoBaby.prenom, date_naissance: demoBaby.date_naissance } : null);
     if (!ctx?.prenom) return;
 
-    const durationMin = calcDurationBetweenTimes(siesteStartTime, siesteEndTime);
-    const meta: SommeilMeta = {
-      heure_debut: siesteStartTime,
-      heure_fin: siesteEndTime,
-    };
-    const endDate = combineDateAndTime(new Date(), siesteEndTime);
-    const toast = getSiesteEndToast(
-      ctx.prenom,
-      durationMin,
-      ctx.date_naissance
+    const end = new Date();
+    const durationMin = Math.max(
+      1,
+      Math.round(
+        (end.getTime() - new Date(activeSieste.start).getTime()) / 60000
+      )
     );
-    setActiveModal(null);
-    setSleepFormType(null);
+    const meta: SommeilMeta = {
+      heure_debut: activeSieste.start,
+      heure_fin: end.toISOString(),
+    };
+    const toast = getSiesteEndToast(ctx.prenom, durationMin, ctx.date_naissance);
+
+    clearActiveSieste();
+    setActiveSieste(null);
     addEvent("sieste", serializeNote(meta), durationMin, {
-      createdAt: endDate.toISOString(),
+      createdAt: end.toISOString(),
       customToast: toast,
     });
   }
 
-  function handleNuitSubmit() {
-    const prenom = babyContext?.prenom ?? demoBaby?.prenom;
-    const dateNaissance =
-      babyContext?.date_naissance ?? demoBaby?.date_naissance;
-    if (!prenom) return;
+  function openSommeilNuitStart() {
+    setNuitCoucher(toTimeInputValue());
+    setNuitReveilsPrevus(0);
+    setActiveModal("sommeil_nuit_start");
+  }
 
-    const durationMin = calcSleepMinutes(nuitCoucher, nuitLever);
+  function handleBonneNuit() {
+    const now = new Date();
+    const state: ModeNuitState = {
+      actif: true,
+      heure_debut: now.toISOString(),
+      coucher: nuitCoucher,
+      nb_reveils_prevus: nuitReveilsPrevus,
+    };
+    activateModeNuit(state);
+    saveNightBedtime(nuitCoucher);
+    dismissNightBanner();
+    setActiveModal(null);
+    showToast("🌙 Bonne nuit !");
+  }
+
+  function openSommeilNuitWake() {
+    setNuitLever(toTimeInputValue());
+    setNuitReveilCount(modeNuitData?.nb_reveils_prevus ?? 0);
+    setActiveModal("sommeil_nuit_wake");
+  }
+
+  function handleNuitWakeSubmit() {
+    const prenom = babyContext?.prenom ?? demoBaby?.prenom;
+    const dateNaissance = babyContext?.date_naissance ?? demoBaby?.date_naissance;
+    if (!prenom || !modeNuitData) return;
+
+    const coucher = modeNuitData.coucher ?? nuitCoucher;
+    const durationMin = calcSleepMinutes(coucher, nuitLever);
     const meta: SommeilMeta = {
-      heure_debut: nuitCoucher,
+      heure_debut: coucher,
       heure_fin: nuitLever,
       nb_reveils: nuitReveilCount,
     };
     const leverDate = combineDateAndTime(new Date(), nuitLever);
     const analysis = getNightAnalysis(prenom, dateNaissance, {
-      coucher: nuitCoucher,
+      coucher,
       lever: nuitLever,
       reveils: [],
       totalReveils: nuitReveilCount,
     });
+
+    deactivateModeNuit();
     setActiveModal(null);
-    setSleepFormType(null);
     addEvent("nuit", serializeNote(meta), durationMin, {
       createdAt: leverDate.toISOString(),
       customToast: analysis,
     });
+  }
+
+  function handleSommeilTypeSelect(type: SleepFormType) {
+    setActiveModal(null);
+    if (type === "sieste") {
+      handleStartSieste();
+      return;
+    }
+    openSommeilNuitStart();
+  }
+
+  function openSommeilNuitForm() {
+    openSommeilNuitStart();
   }
 
   function handleNightBedYes() {
@@ -924,7 +1022,6 @@ export default function Home() {
   function closeModal() {
     if (!saving) {
       setActiveModal(null);
-      setSleepFormType(null);
     }
   }
 
@@ -995,15 +1092,35 @@ export default function Home() {
     );
   }, [nightUiTick, events, babyContext]);
 
-  const siesteFormDurationMin = useMemo(
-    () => calcDurationBetweenTimes(siesteStartTime, siesteEndTime),
-    [siesteStartTime, siesteEndTime]
-  );
+  const siesteChronometer = useMemo(() => {
+    void chronoTick;
+    if (!activeSieste) return null;
+    return formatChronometer(activeSieste.start);
+  }, [activeSieste, chronoTick]);
 
-  const nuitFormDurationMin = useMemo(
-    () => calcSleepMinutes(nuitCoucher, nuitLever),
-    [nuitCoucher, nuitLever]
-  );
+  const sommeilPrenom = babyContext?.prenom ?? demoBabyName ?? "bébé";
+  const feedingProfile = getFeedingProfile();
+
+  const biberonAlert = useMemo(() => {
+    void biberonTick;
+    if (modeNuit) return null;
+    if (!feedingProfile?.prenom || !feedingProfile.date_naissance) return null;
+    return getBiberonAlertState({
+      dernierBiberon: lastBiberon ?? null,
+      prenom: feedingProfile.prenom,
+      sexe: feedingProfile.sexe,
+      ageEnJours: getAgeInDays(feedingProfile.date_naissance),
+      parcours: feedingProfile.parcours ?? "artificiel",
+    });
+  }, [biberonTick, lastBiberon, feedingProfile, modeNuit]);
+
+  const nightModeBiberonMessage = useMemo(() => {
+    if (!modeNuit || !feedingProfile?.prenom) return null;
+    return getNightModeBiberonMessage(
+      feedingProfile.prenom,
+      feedingProfile.sexe
+    );
+  }, [modeNuit, feedingProfile]);
 
   const lastSleepEvent = useMemo(
     () => events.find((e) => e.type === "sieste" || e.type === "nuit") ?? null,
@@ -1015,24 +1132,12 @@ export default function Home() {
     return getCardSubtitle(lastSleepEvent.type, events);
   }, [lastSleepEvent, events]);
 
-  const feedingProfile = getFeedingProfile();
   const recommendedMl = feedingProfile?.date_naissance
     ? getBiberonRecommandation(getAgeInDays(feedingProfile.date_naissance)).ml
     : 120;
 
-  const biberonAlert = useMemo(() => {
-    void biberonTick;
-    if (!feedingProfile?.prenom || !feedingProfile.date_naissance) return null;
-    return getBiberonAlertState({
-      dernierBiberon: lastBiberon ?? null,
-      prenom: feedingProfile.prenom,
-      sexe: feedingProfile.sexe,
-      ageEnJours: getAgeInDays(feedingProfile.date_naissance),
-      parcours: feedingProfile.parcours ?? "artificiel",
-    });
-  }, [biberonTick, lastBiberon, feedingProfile]);
-
   const biberonInverseTimer = useMemo(() => {
+    if (modeNuit) return null;
     void biberonTick;
     if (
       !biberonAlert?.afficherMinuteurInverse ||
@@ -1048,7 +1153,7 @@ export default function Home() {
       feedingProfile.parcours ?? "artificiel",
       biberonAlert.minuteurMode
     );
-  }, [biberonTick, biberonAlert, lastBiberon, feedingProfile]);
+  }, [biberonTick, biberonAlert, lastBiberon, feedingProfile, modeNuit]);
 
   const biberonMlValue = Math.min(
     350,
@@ -1303,7 +1408,7 @@ export default function Home() {
         </motion.section>
 
         <AnimatePresence>
-          {biberonAlert && !biberonAlert.bandeauCouleur && (
+          {!modeNuit && biberonAlert && !biberonAlert.bandeauCouleur && (
             <motion.section
               key={biberonAlert.message}
               initial={{ opacity: 0, y: 10 }}
@@ -1332,7 +1437,17 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {biberonAlert?.bandeauCouleur && (
+        {modeNuit && nightModeBiberonMessage ? (
+          <motion.section
+            animate={{ backgroundColor: "#6B5B95" }}
+            transition={{ duration: 0.4 }}
+            className="rounded-3xl px-4 py-3 shadow-md"
+          >
+            <p className="text-sm leading-relaxed text-white">
+              {nightModeBiberonMessage}
+            </p>
+          </motion.section>
+        ) : biberonAlert?.bandeauCouleur ? (
           <motion.section
             animate={{ backgroundColor: biberonAlert.bandeauCouleur }}
             transition={{ duration: 0.4 }}
@@ -1342,7 +1457,7 @@ export default function Home() {
               {biberonAlert.message}
             </p>
           </motion.section>
-        )}
+        ) : null}
 
         <section
           style={{
@@ -1423,24 +1538,121 @@ export default function Home() {
             </p>
           </motion.button>
 
-          <motion.button
-            type="button"
-            onClick={handleSommeilClick}
-            disabled={saving}
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            whileTap={{ scale: 0.96 }}
-            whileHover={{ scale: 1.02 }}
-            className="rounded-3xl p-5 text-center shadow-md disabled:opacity-60"
+            className="rounded-3xl p-5 text-center shadow-md"
             style={{ backgroundColor: "#EEE8FF" }}
           >
-            <p className="text-4xl">😴</p>
-            <p className="mt-2 font-bold text-[#4A3F5C]">Sommeil</p>
-            <p className="mt-1 text-xs text-[#8B7FA0]">
-              {saving ? "Enregistrement..." : sommeilSubtitle}
-            </p>
-          </motion.button>
+            {activeSieste ? (
+              <>
+                <p
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: "#4A3F5C",
+                    margin: 0,
+                  }}
+                >
+                  😴 Sieste en cours — {siesteChronometer}
+                </p>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEndSieste();
+                  }}
+                  disabled={saving}
+                  style={{
+                    marginTop: 12,
+                    width: "100%",
+                    backgroundColor: "#9B59B6",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 14,
+                    padding: "10px 12px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  ⏹ Terminer la sieste
+                </button>
+              </>
+            ) : modeNuit ? (
+              <>
+                <p
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: "#4A3F5C",
+                    margin: 0,
+                  }}
+                >
+                  🌙 {sommeilPrenom} est en mode nuit
+                </p>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openSommeilNuitWake();
+                  }}
+                  disabled={saving}
+                  style={{
+                    marginTop: 12,
+                    width: "100%",
+                    backgroundColor: "#E8406A",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 14,
+                    padding: "10px 12px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  ☀️ Enregistrer le réveil
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSommeilClick}
+                disabled={saving}
+                style={{
+                  width: "100%",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: saving ? "default" : "pointer",
+                  opacity: saving ? 0.6 : 1,
+                }}
+              >
+                <p style={{ fontSize: 36, margin: 0 }}>😴</p>
+                <p
+                  style={{
+                    marginTop: 8,
+                    fontWeight: 700,
+                    color: "#4A3F5C",
+                  }}
+                >
+                  Sommeil
+                </p>
+                <p
+                  style={{
+                    marginTop: 4,
+                    fontSize: 12,
+                    color: "#8B7FA0",
+                  }}
+                >
+                  {saving ? "Enregistrement..." : sommeilSubtitle}
+                </p>
+              </button>
+            )}
+          </motion.div>
 
           <motion.button
             type="button"
@@ -2329,36 +2541,14 @@ export default function Home() {
               backgroundColor: "#EEE8FF",
               borderRadius: 20,
               padding: 24,
-              border:
-                sleepFormType === "sieste"
-                  ? "2px solid #9B59B6"
-                  : "2px solid transparent",
+              border: "2px solid transparent",
               cursor: "pointer",
               textAlign: "center",
             }}
           >
             <span style={{ fontSize: 40, display: "block" }}>😴</span>
-            <span
-              style={{
-                display: "block",
-                fontSize: 16,
-                fontWeight: 600,
-                color: "#4A3F5C",
-                marginTop: 8,
-              }}
-            >
-              Sieste
-            </span>
-            <span
-              style={{
-                display: "block",
-                fontSize: 12,
-                color: "#8B7FA0",
-                marginTop: 4,
-              }}
-            >
-              Repos de la journée
-            </span>
+            <span style={{ display: "block", fontSize: 16, fontWeight: 600, color: "#4A3F5C", marginTop: 8 }}>Sieste</span>
+            <span style={{ display: "block", fontSize: 12, color: "#8B7FA0", marginTop: 4 }}>Repos de la journée</span>
           </button>
           <button
             type="button"
@@ -2368,288 +2558,113 @@ export default function Home() {
               backgroundColor: "#E8F4FF",
               borderRadius: 20,
               padding: 24,
-              border:
-                sleepFormType === "nuit"
-                  ? "2px solid #3498DB"
-                  : "2px solid transparent",
+              border: "2px solid transparent",
               cursor: "pointer",
               textAlign: "center",
             }}
           >
             <span style={{ fontSize: 40, display: "block" }}>🌙</span>
-            <span
-              style={{
-                display: "block",
-                fontSize: 16,
-                fontWeight: 600,
-                color: "#4A3F5C",
-                marginTop: 8,
-              }}
-            >
-              Nuit
-            </span>
-            <span
-              style={{
-                display: "block",
-                fontSize: 12,
-                color: "#8B7FA0",
-                marginTop: 4,
-              }}
-            >
-              Sommeil nocturne
-            </span>
+            <span style={{ display: "block", fontSize: 16, fontWeight: 600, color: "#4A3F5C", marginTop: 8 }}>Nuit</span>
+            <span style={{ display: "block", fontSize: 12, color: "#8B7FA0", marginTop: 4 }}>Sommeil nocturne</span>
           </button>
         </div>
       </ModalSheet>
 
-      <ModalSheet open={activeModal === "sommeil_form"} onClose={closeModal} centered>
-        {sleepFormType === "sieste" && (
-          <>
-            <h2
+      <ModalSheet open={activeModal === "sommeil_nuit_start"} onClose={closeModal} centered>
+        <h2 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 700, color: "#4A3F5C", textAlign: "center" }}>
+          🌙 Bonne nuit pour {sommeilPrenom}
+        </h2>
+        <label style={{ display: "block", fontSize: 13, color: "#8B7FA0" }}>Heure coucher</label>
+        <input
+          type="time"
+          value={nuitCoucher}
+          onChange={(e) => setNuitCoucher(e.target.value)}
+          style={{ marginTop: 6, marginBottom: 16, width: "100%", borderRadius: 12, border: "1.5px solid #F0E8F5", padding: "12px 16px", fontSize: 16, backgroundColor: "#FDF8F2", boxSizing: "border-box" }}
+        />
+        <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 8px" }}>Réveils prévus (optionnel)</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+          {SOMMEIL_REVEIL_COUNTS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setNuitReveilsPrevus(n)}
               style={{
-                margin: "0 0 20px",
-                fontSize: 18,
-                fontWeight: 700,
-                color: "#4A3F5C",
-                textAlign: "center",
-              }}
-            >
-              😴 Sieste de {babyContext?.prenom ?? demoBabyName ?? "bébé"}
-            </h2>
-            <label style={{ display: "block", fontSize: 13, color: "#8B7FA0" }}>
-              Heure début
-            </label>
-            <input
-              type="time"
-              value={siesteStartTime}
-              onChange={(e) => setSiesteStartTime(e.target.value)}
-              style={{
-                marginTop: 6,
-                marginBottom: 16,
-                width: "100%",
+                flex: "1 1 14%",
+                minWidth: 44,
                 borderRadius: 12,
-                border: "1.5px solid #F0E8F5",
-                padding: "12px 16px",
-                fontSize: 16,
-                backgroundColor: "#FDF8F2",
-                boxSizing: "border-box",
-              }}
-            />
-            <label style={{ display: "block", fontSize: 13, color: "#8B7FA0" }}>
-              Heure fin
-            </label>
-            <input
-              type="time"
-              value={siesteEndTime}
-              onChange={(e) => setSiesteEndTime(e.target.value)}
-              style={{
-                marginTop: 6,
-                width: "100%",
-                borderRadius: 12,
-                border: "1.5px solid #F0E8F5",
-                padding: "12px 16px",
-                fontSize: 16,
-                backgroundColor: "#FDF8F2",
-                boxSizing: "border-box",
-              }}
-            />
-            <p
-              style={{
-                marginTop: 16,
-                fontSize: 14,
-                color: "#8B7FA0",
-                textAlign: "center",
-              }}
-            >
-              Durée : {formatDurationCompact(siesteFormDurationMin)}
-            </p>
-            <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
-              <button
-                type="button"
-                onClick={closeModal}
-                disabled={saving}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  borderRadius: 14,
-                  border: "1.5px solid #F0E8F8",
-                  backgroundColor: "white",
-                  color: "#4A3F5C",
-                  fontSize: 15,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={handleSiesteSubmit}
-                disabled={saving}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  borderRadius: 14,
-                  border: "none",
-                  backgroundColor: "#E8406A",
-                  color: "white",
-                  fontSize: 15,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  opacity: saving ? 0.7 : 1,
-                }}
-              >
-                Enregistrer ✓
-              </button>
-            </div>
-          </>
-        )}
-        {sleepFormType === "nuit" && (
-          <>
-            <h2
-              style={{
-                margin: "0 0 20px",
-                fontSize: 18,
-                fontWeight: 700,
-                color: "#4A3F5C",
-                textAlign: "center",
-              }}
-            >
-              🌙 Nuit de {babyContext?.prenom ?? demoBabyName ?? "bébé"}
-            </h2>
-            <label style={{ display: "block", fontSize: 13, color: "#8B7FA0" }}>
-              Heure coucher
-            </label>
-            <input
-              type="time"
-              value={nuitCoucher}
-              onChange={(e) => setNuitCoucher(e.target.value)}
-              style={{
-                marginTop: 6,
-                marginBottom: 16,
-                width: "100%",
-                borderRadius: 12,
-                border: "1.5px solid #F0E8F5",
-                padding: "12px 16px",
-                fontSize: 16,
-                backgroundColor: "#FDF8F2",
-                boxSizing: "border-box",
-              }}
-            />
-            <label style={{ display: "block", fontSize: 13, color: "#8B7FA0" }}>
-              Heure lever
-            </label>
-            <input
-              type="time"
-              value={nuitLever}
-              onChange={(e) => setNuitLever(e.target.value)}
-              style={{
-                marginTop: 6,
-                width: "100%",
-                borderRadius: 12,
-                border: "1.5px solid #F0E8F5",
-                padding: "12px 16px",
-                fontSize: 16,
-                backgroundColor: "#FDF8F2",
-                boxSizing: "border-box",
-              }}
-            />
-            <p
-              style={{
-                marginTop: 16,
+                padding: "10px 6px",
                 fontSize: 13,
-                color: "#8B7FA0",
+                fontWeight: 600,
+                border: nuitReveilsPrevus === n ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                backgroundColor: nuitReveilsPrevus === n ? "#E8406A" : "white",
+                color: nuitReveilsPrevus === n ? "white" : "#4A3F5C",
+                cursor: "pointer",
               }}
             >
-              Réveils cette nuit
-            </p>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                marginTop: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              {SOMMEIL_REVEIL_COUNTS.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setNuitReveilCount(n)}
-                  style={{
-                    flex: "1 1 14%",
-                    minWidth: 44,
-                    borderRadius: 12,
-                    padding: "10px 6px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    border:
-                      nuitReveilCount === n
-                        ? "2px solid #E8406A"
-                        : "1.5px solid #F0E8F5",
-                    backgroundColor:
-                      nuitReveilCount === n ? "#E8406A" : "white",
-                    color: nuitReveilCount === n ? "white" : "#4A3F5C",
-                    cursor: "pointer",
-                  }}
-                >
-                  {n === 5 ? "5+" : n}
-                </button>
-              ))}
-            </div>
-            <p
-              style={{
-                marginTop: 16,
-                fontSize: 14,
-                color: "#8B7FA0",
-                textAlign: "center",
-              }}
-            >
-              Durée : {formatDurationCompact(nuitFormDurationMin)}
-            </p>
-            <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
-              <button
-                type="button"
-                onClick={closeModal}
-                disabled={saving}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  borderRadius: 14,
-                  border: "1.5px solid #F0E8F8",
-                  backgroundColor: "white",
-                  color: "#4A3F5C",
-                  fontSize: 15,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={handleNuitSubmit}
-                disabled={saving}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  borderRadius: 14,
-                  border: "none",
-                  backgroundColor: "#E8406A",
-                  color: "white",
-                  fontSize: 15,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  opacity: saving ? 0.7 : 1,
-                }}
-              >
-                Enregistrer ✓
-              </button>
-            </div>
-          </>
-        )}
+              {n === 5 ? "5+" : n}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={handleBonneNuit}
+          disabled={saving}
+          style={{ width: "100%", padding: 14, borderRadius: 14, border: "none", backgroundColor: "#3498DB", color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: saving ? 0.7 : 1 }}
+        >
+          Bonne nuit 🌙
+        </button>
+        <button type="button" onClick={closeModal} disabled={saving} className="mt-3 w-full rounded-2xl bg-gray-100 py-3 text-sm text-[#8B7FA0]">
+          Annuler
+        </button>
       </ModalSheet>
 
+      <ModalSheet open={activeModal === "sommeil_nuit_wake"} onClose={closeModal} centered>
+        <h2 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 700, color: "#4A3F5C", textAlign: "center" }}>
+          ☀️ Réveil de {sommeilPrenom}
+        </h2>
+        <label style={{ display: "block", fontSize: 13, color: "#8B7FA0" }}>Heure de réveil</label>
+        <input
+          type="time"
+          value={nuitLever}
+          onChange={(e) => setNuitLever(e.target.value)}
+          style={{ marginTop: 6, marginBottom: 16, width: "100%", borderRadius: 12, border: "1.5px solid #F0E8F5", padding: "12px 16px", fontSize: 16, backgroundColor: "#FDF8F2", boxSizing: "border-box" }}
+        />
+        <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 8px" }}>Réveils cette nuit</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+          {SOMMEIL_REVEIL_COUNTS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setNuitReveilCount(n)}
+              style={{
+                flex: "1 1 14%",
+                minWidth: 44,
+                borderRadius: 12,
+                padding: "10px 6px",
+                fontSize: 13,
+                fontWeight: 600,
+                border: nuitReveilCount === n ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+                backgroundColor: nuitReveilCount === n ? "#E8406A" : "white",
+                color: nuitReveilCount === n ? "white" : "#4A3F5C",
+                cursor: "pointer",
+              }}
+            >
+              {n === 5 ? "5+" : n}
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 14, color: "#8B7FA0", textAlign: "center", marginBottom: 20 }}>
+          Durée : {formatDurationCompact(calcSleepMinutes(modeNuitData?.coucher ?? nuitCoucher, nuitLever))}
+        </p>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button type="button" onClick={closeModal} disabled={saving} style={{ flex: 1, padding: 14, borderRadius: 14, border: "1.5px solid #F0E8F8", backgroundColor: "white", color: "#4A3F5C", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
+            Annuler
+          </button>
+          <button type="button" onClick={handleNuitWakeSubmit} disabled={saving} style={{ flex: 1, padding: 14, borderRadius: 14, border: "none", backgroundColor: "#E8406A", color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: saving ? 0.7 : 1 }}>
+            Enregistrer ✓
+          </button>
+        </div>
+      </ModalSheet>
 
       <AnimatePresence>
         {toastMessage && (

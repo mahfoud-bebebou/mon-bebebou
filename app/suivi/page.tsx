@@ -8,6 +8,7 @@ import {
   deleteDemoEvent,
   fetchDemoEvents,
   getOrCreateSessionId,
+  insertDemoEvent,
   updateDemoEvent,
 } from "@/lib/demo";
 import {
@@ -16,9 +17,20 @@ import {
   formatTimeShort,
   getEventEmoji,
   getEventLabel,
+  insertEvent,
   updateEvent,
 } from "@/lib/events";
-import { combineDateAndTime, parseJsonNote, toTimeInputValue } from "@/lib/sleep";
+import {
+  calcDurationBetweenTimes,
+  calcSleepMinutes,
+  combineDateAndTime,
+  formatDurationCompact,
+  parseJsonNote,
+  serializeNote,
+  SOMMEIL_REVEIL_COUNTS,
+  type SommeilMeta,
+  toTimeInputValue,
+} from "@/lib/sleep";
 import type { BebebouEvent } from "@/lib/supabase";
 
 type SuiviPeriod = "today" | "7days" | "30days";
@@ -103,6 +115,13 @@ export default function SuiviPage() {
   const [editMl, setEditMl] = useState("120");
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [babyId, setBabyId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [showSleepModal, setShowSleepModal] = useState(false);
+  const [sleepType, setSleepType] = useState<"sieste" | "nuit">("sieste");
+  const [sleepDebut, setSleepDebut] = useState(() => toTimeInputValue());
+  const [sleepFin, setSleepFin] = useState(() => toTimeInputValue());
+  const [sleepReveils, setSleepReveils] = useState(0);
 
   const reloadEvents = useCallback(async () => {
     setError(null);
@@ -113,12 +132,32 @@ export default function SuiviPage() {
 
     if (user) {
       setIsAuthenticated(true);
+      setUserId(user.id);
       const data = await fetchEventsFromDb(user.id);
       setEvents(data);
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("family_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profile?.family_id) {
+        const { data: baby } = await supabase
+          .from("babies")
+          .select("id")
+          .eq("family_id", profile.family_id)
+          .maybeSingle();
+        setBabyId(baby?.id ?? null);
+      } else {
+        setBabyId(null);
+      }
       return;
     }
 
     setIsAuthenticated(false);
+    setUserId(null);
+    setBabyId(null);
     const sessionId = getOrCreateSessionId();
     setDemoSessionId(sessionId);
     const data = await fetchDemoEvents(sessionId);
@@ -145,6 +184,29 @@ export default function SuiviPage() {
     () => filterByPeriod(events, period),
     [events, period]
   );
+
+  const sleepEvents = useMemo(
+    () =>
+      filteredEvents.filter(
+        (e) => e.type === "sieste" || e.type === "nuit"
+      ),
+    [filteredEvents]
+  );
+
+  const otherEvents = useMemo(
+    () =>
+      filteredEvents.filter(
+        (e) => e.type !== "sieste" && e.type !== "nuit"
+      ),
+    [filteredEvents]
+  );
+
+  const sleepDurationMin = useMemo(() => {
+    if (sleepType === "nuit") {
+      return calcSleepMinutes(sleepDebut, sleepFin);
+    }
+    return calcDurationBetweenTimes(sleepDebut, sleepFin);
+  }, [sleepType, sleepDebut, sleepFin]);
 
   const editMlValue = Math.min(
     350,
@@ -227,6 +289,152 @@ export default function SuiviPage() {
     }
   }
 
+  function openSleepModal() {
+    setSleepType("sieste");
+    setSleepDebut(toTimeInputValue());
+    setSleepFin(toTimeInputValue());
+    setSleepReveils(0);
+    setModalError(null);
+    setShowSleepModal(true);
+  }
+
+  function closeSleepModal() {
+    if (saving) return;
+    setShowSleepModal(false);
+    setModalError(null);
+  }
+
+  function buildSleepEndDate(debut: string, fin: string): Date {
+    const ref = new Date();
+    const start = combineDateAndTime(ref, debut);
+    let end = combineDateAndTime(ref, fin);
+    if (end.getTime() <= start.getTime()) {
+      end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+    }
+    return end;
+  }
+
+  async function handleSaveSleep() {
+    setSaving(true);
+    setModalError(null);
+
+    try {
+      const durationMin = Math.max(1, sleepDurationMin);
+      const meta: SommeilMeta = {
+        heure_debut: sleepDebut,
+        heure_fin: sleepFin,
+        ...(sleepType === "nuit" ? { nb_reveils: sleepReveils } : {}),
+      };
+      const createdAt = buildSleepEndDate(sleepDebut, sleepFin).toISOString();
+      const note = serializeNote(meta);
+
+      if (isAuthenticated) {
+        if (!userId) throw new Error("Utilisateur introuvable");
+        await insertEvent({
+          type: sleepType,
+          note,
+          quantity: durationMin,
+          created_at: createdAt,
+          user_id: userId,
+          baby_id: babyId ?? undefined,
+        });
+      } else {
+        const sessionId = demoSessionId || getOrCreateSessionId();
+        await insertDemoEvent(
+          sessionId,
+          sleepType,
+          note,
+          durationMin,
+          createdAt
+        );
+      }
+
+      await reloadEvents();
+      setShowSleepModal(false);
+    } catch (err) {
+      console.error(err);
+      setModalError("Impossible d'enregistrer ce sommeil");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function renderEventRow(
+    event: BebebouEvent,
+    index: number,
+    total: number,
+    showEdit?: boolean
+  ) {
+    return (
+      <li
+        key={event.id}
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 12,
+          padding: "12px 0",
+          borderBottom: index < total - 1 ? "1px solid #F0E8F8" : "none",
+        }}
+      >
+        <span style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>
+          {getEventEmoji(event.type)}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 14,
+              fontWeight: 700,
+              color: "#4A3F5C",
+            }}
+          >
+            {TYPE_LABELS[event.type]}
+          </p>
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontSize: 13,
+              color: "#8B7FA0",
+              lineHeight: 1.4,
+            }}
+          >
+            {getEventLabel(event)}
+          </p>
+        </div>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#8B7FA0",
+            flexShrink: 0,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {formatEventDate(event.created_at)}
+        </span>
+        {showEdit && isEditableBiberon(event) && (
+          <button
+            type="button"
+            onClick={() => openEditModal(event)}
+            aria-label="Modifier ce biberon"
+            style={{
+              backgroundColor: "transparent",
+              border: "none",
+              fontSize: 18,
+              cursor: "pointer",
+              color: "#8B7FA0",
+              flexShrink: 0,
+              padding: 0,
+              lineHeight: 1,
+            }}
+          >
+            ✏️
+          </button>
+        )}
+      </li>
+    );
+  }
+
   return (
     <main
       style={{
@@ -287,8 +495,82 @@ export default function SuiviPage() {
             borderRadius: 24,
             padding: "20px 16px",
             boxShadow: "0 4px 16px rgba(74,63,92,0.06)",
+            marginBottom: 16,
           }}
         >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 12,
+            }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                fontSize: 16,
+                fontWeight: 800,
+                color: "#4A3F5C",
+              }}
+            >
+              😴 Sommeil
+            </h2>
+            <button
+              type="button"
+              onClick={openSleepModal}
+              disabled={loading}
+              style={{
+                border: "none",
+                borderRadius: 12,
+                padding: "8px 12px",
+                backgroundColor: "#EEE8FF",
+                color: "#6B5B95",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              + Ajouter un sommeil
+            </button>
+          </div>
+
+          {loading ? (
+            <p style={{ fontSize: 14, color: "#8B7FA0", textAlign: "center" }}>
+              Chargement...
+            </p>
+          ) : sleepEvents.length === 0 ? (
+            <p style={{ fontSize: 14, color: "#8B7FA0", textAlign: "center" }}>
+              Aucun sommeil pour cette période
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {sleepEvents.map((event, index) =>
+                renderEventRow(event, index, sleepEvents.length)
+              )}
+            </ul>
+          )}
+        </section>
+
+        <section
+          style={{
+            backgroundColor: "white",
+            borderRadius: 24,
+            padding: "20px 16px",
+            boxShadow: "0 4px 16px rgba(74,63,92,0.06)",
+          }}
+        >
+          <h2
+            style={{
+              margin: "0 0 12px",
+              fontSize: 16,
+              fontWeight: 800,
+              color: "#4A3F5C",
+            }}
+          >
+            📋 Historique
+          </h2>
           {loading ? (
             <p style={{ fontSize: 14, color: "#8B7FA0", textAlign: "center" }}>
               Chargement...
@@ -297,83 +579,15 @@ export default function SuiviPage() {
             <p style={{ fontSize: 14, color: "#C03060", textAlign: "center" }}>
               {error}
             </p>
-          ) : filteredEvents.length === 0 ? (
+          ) : otherEvents.length === 0 ? (
             <p style={{ fontSize: 14, color: "#8B7FA0", textAlign: "center" }}>
-              Aucun événement pour cette période
+              Aucun autre événement pour cette période
             </p>
           ) : (
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-              {filteredEvents.map((event, index) => (
-                <li
-                  key={event.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 12,
-                    padding: "12px 0",
-                    borderBottom:
-                      index < filteredEvents.length - 1
-                        ? "1px solid #F0E8F8"
-                        : "none",
-                  }}
-                >
-                  <span style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>
-                    {getEventEmoji(event.type)}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p
-                      style={{
-                        margin: 0,
-                        fontSize: 14,
-                        fontWeight: 700,
-                        color: "#4A3F5C",
-                      }}
-                    >
-                      {TYPE_LABELS[event.type]}
-                    </p>
-                    <p
-                      style={{
-                        margin: "4px 0 0",
-                        fontSize: 13,
-                        color: "#8B7FA0",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {getEventLabel(event)}
-                    </p>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "#8B7FA0",
-                      flexShrink: 0,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {formatEventDate(event.created_at)}
-                  </span>
-                  {isEditableBiberon(event) && (
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(event)}
-                      aria-label="Modifier ce biberon"
-                      style={{
-                        backgroundColor: "transparent",
-                        border: "none",
-                        fontSize: 18,
-                        cursor: "pointer",
-                        color: "#8B7FA0",
-                        flexShrink: 0,
-                        padding: 0,
-                        lineHeight: 1,
-                      }}
-                    >
-                      ✏️
-                    </button>
-                  )}
-                </li>
-              ))}
+              {otherEvents.map((event, index) =>
+                renderEventRow(event, index, otherEvents.length, true)
+              )}
             </ul>
           )}
         </section>
@@ -547,6 +761,188 @@ export default function SuiviPage() {
         >
           🗑️ Supprimer
         </button>
+      </ModalSheet>
+
+      <ModalSheet open={showSleepModal} onClose={closeSleepModal} centered>
+        <h2
+          style={{
+            margin: "0 0 20px",
+            fontSize: 18,
+            fontWeight: 800,
+            color: "#4A3F5C",
+            textAlign: "center",
+          }}
+        >
+          + Ajouter un sommeil
+        </h2>
+
+        <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 8px" }}>Type</p>
+        <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+          {(["sieste", "nuit"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setSleepType(type)}
+              style={{
+                flex: 1,
+                padding: "12px 8px",
+                borderRadius: 14,
+                border:
+                  sleepType === type
+                    ? "2px solid #9B59B6"
+                    : "1.5px solid #F0E8F8",
+                backgroundColor: sleepType === type ? "#EEE8FF" : "white",
+                color: "#4A3F5C",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {type === "sieste" ? "😴 Sieste" : "🌙 Nuit"}
+            </button>
+          ))}
+        </div>
+
+        <label style={labelStyle}>Heure début</label>
+        <input
+          type="time"
+          value={sleepDebut}
+          onChange={(e) => setSleepDebut(e.target.value)}
+          style={{
+            width: "100%",
+            borderRadius: 12,
+            padding: "12px 16px",
+            border: "1.5px solid #F0E8F5",
+            fontSize: 15,
+            color: "#4A3F5C",
+            backgroundColor: "#FDF8F2",
+            boxSizing: "border-box",
+            marginBottom: 16,
+          }}
+        />
+
+        <label style={labelStyle}>Heure fin</label>
+        <input
+          type="time"
+          value={sleepFin}
+          onChange={(e) => setSleepFin(e.target.value)}
+          style={{
+            width: "100%",
+            borderRadius: 12,
+            padding: "12px 16px",
+            border: "1.5px solid #F0E8F5",
+            fontSize: 15,
+            color: "#4A3F5C",
+            backgroundColor: "#FDF8F2",
+            boxSizing: "border-box",
+            marginBottom: sleepType === "nuit" ? 16 : 20,
+          }}
+        />
+
+        {sleepType === "nuit" && (
+          <>
+            <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 8px" }}>
+              Nombre de réveils
+            </p>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginBottom: 16,
+              }}
+            >
+              {SOMMEIL_REVEIL_COUNTS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setSleepReveils(n)}
+                  style={{
+                    flex: "1 1 14%",
+                    minWidth: 44,
+                    borderRadius: 12,
+                    padding: "10px 6px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    border:
+                      sleepReveils === n
+                        ? "2px solid #E8406A"
+                        : "1.5px solid #F0E8F5",
+                    backgroundColor: sleepReveils === n ? "#E8406A" : "white",
+                    color: sleepReveils === n ? "white" : "#4A3F5C",
+                    cursor: "pointer",
+                  }}
+                >
+                  {n === 5 ? "5+" : n}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <p
+          style={{
+            fontSize: 14,
+            color: "#8B7FA0",
+            textAlign: "center",
+            margin: "0 0 20px",
+          }}
+        >
+          Durée : {formatDurationCompact(sleepDurationMin)}
+        </p>
+
+        {modalError && (
+          <p
+            style={{
+              fontSize: 13,
+              color: "#C03060",
+              textAlign: "center",
+              margin: "0 0 16px",
+            }}
+          >
+            {modalError}
+          </p>
+        )}
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            type="button"
+            onClick={closeSleepModal}
+            disabled={saving}
+            style={{
+              flex: 1,
+              padding: 14,
+              borderRadius: 14,
+              border: "1.5px solid #F0E8F8",
+              backgroundColor: "white",
+              color: "#4A3F5C",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: saving ? "not-allowed" : "pointer",
+            }}
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveSleep}
+            disabled={saving}
+            style={{
+              flex: 1,
+              padding: 14,
+              borderRadius: 14,
+              border: "none",
+              backgroundColor: "#9B59B6",
+              color: "white",
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: saving ? "not-allowed" : "pointer",
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            Enregistrer ✓
+          </button>
+        </div>
       </ModalSheet>
     </main>
   );

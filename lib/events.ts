@@ -20,7 +20,30 @@ export async function fetchEvents(userId: string): Promise<BebebouEvent[]> {
 export type EventUpdatePayload = {
   quantity?: number | null;
   created_at?: string;
+  note?: string | null;
 };
+
+export type EventInsertPayload = {
+  type: EventType;
+  note?: string | null;
+  quantity?: number | null;
+  created_at?: string;
+  baby_id?: string;
+  user_id: string;
+};
+
+export async function insertEvent(payload: EventInsertPayload): Promise<void> {
+  const { error } = await supabase.from("events").insert({
+    type: payload.type,
+    note: payload.note ?? null,
+    quantity: payload.quantity ?? null,
+    user_id: payload.user_id,
+    baby_id: payload.baby_id ?? null,
+    created_at: payload.created_at ?? new Date().toISOString(),
+  });
+
+  if (error) throw error;
+}
 
 export async function updateEvent(
   eventId: string,
