@@ -2439,6 +2439,30 @@ export default function Home() {
             👶 Profil
           </button>
         </div>
+
+        {!isAuthenticated && (
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.clear();
+              window.location.reload();
+            }}
+            style={{
+              display: "block",
+              width: "100%",
+              textAlign: "center",
+              fontSize: 12,
+              color: "#8B7FA0",
+              backgroundColor: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "8px",
+              marginTop: 8,
+            }}
+          >
+            🔄 Réinitialiser la session
+          </button>
+        )}
       </div>
 
       <ModalSheet
