@@ -241,8 +241,7 @@ export function loadNightBedtime(): string | null {
 }
 
 export function getDefaultSiesteStartTime(): string {
-  const d = new Date(Date.now() - 5 * 60000);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return toTimeInputValue(new Date());
 }
 
 export function formatSiesteDurationShort(totalMinutes: number): string {

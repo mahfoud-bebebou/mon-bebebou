@@ -105,41 +105,34 @@ export default function LoginPage() {
               {loading ? "Chargement..." : "Se connecter"}
             </button>
 
-            <button
-              type="button"
-              onClick={() => router.push("/register")}
-              className="w-full rounded-2xl border-2 py-3 text-sm font-bold text-[#E8406A]"
-              style={{
-                borderColor: "#E8406A",
-                position: "relative",
-                zIndex: 10,
-              }}
+            <a
+              href="/register"
+              className="block w-full rounded-2xl border-2 py-3 text-center text-sm font-bold text-[#E8406A] no-underline"
+              style={{ borderColor: "#E8406A" }}
             >
               Créer un compte
-            </button>
+            </a>
 
-            <button
-              type="button"
-              onClick={() => router.push("/rejoindre")}
+            <a
+              href="/rejoindre"
               style={{
                 display: "block",
                 width: "100%",
                 textAlign: "center",
-                marginTop: 12,
+                padding: "14px 16px",
                 fontSize: 14,
                 color: "#E8406A",
                 backgroundColor: "white",
                 border: "1.5px solid #E8406A",
                 borderRadius: 16,
-                padding: "14px 16px",
                 cursor: "pointer",
                 fontWeight: 600,
-                position: "relative",
-                zIndex: 20,
+                textDecoration: "none",
+                boxSizing: "border-box",
               }}
             >
               👨‍👩‍👧 Rejoindre la famille de mon co-parent
-            </button>
+            </a>
           </div>
 
           <a

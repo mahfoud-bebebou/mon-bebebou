@@ -70,7 +70,6 @@ import {
   genderEveille,
   genderIlElle,
   genderReveille,
-  getDefaultSiesteStartTime,
   getNightAnalysis,
   getNightModeBiberonMessage,
   hasNightRecordedToday,
@@ -366,7 +365,7 @@ export default function Home() {
   const [siesteActive, setSiesteActive] = useState(false);
   const [siesteHeureDebut, setSiesteHeureDebut] = useState<Date | null>(null);
   const [siesteHeureDebutInput, setSiesteHeureDebutInput] = useState(() =>
-    getDefaultSiesteStartTime()
+    getCurrentTimeValue()
   );
   const [siesteHeureFinInput, setSiesteHeureFinInput] = useState(() =>
     toTimeInputValue()
@@ -1124,7 +1123,7 @@ export default function Home() {
   }
 
   function openSommeilSiesteStart() {
-    setSiesteHeureDebutInput(getDefaultSiesteStartTime());
+    setSiesteHeureDebutInput(getCurrentTimeValue());
     setActiveModal("sommeil_sieste_start");
   }
 
