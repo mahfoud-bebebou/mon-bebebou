@@ -13,7 +13,6 @@ import { createBrowserClient } from "@supabase/ssr";
 import {
   fetchEvents as fetchEventsFromDb,
   formatTimeShort,
-  getBiberonAlert,
   getCardSubtitle,
   getEventEmoji,
   getEventLabel,
@@ -27,7 +26,6 @@ import {
   formatExactBabyAge,
   getAgeInDays,
   getDemoBaby,
-  getDemoFeedingBanner,
   getOrCreateSessionId,
   hasDemoBaby,
   saveWeightLocalStorage,
@@ -42,16 +40,15 @@ import {
 import {
   getBiberonQuantityFeedback,
   getBiberonRecommandation,
+  getBiberonAlertState,
   getBiberonToast,
-  formatBiberonCountdownTimer,
-  getBiberonCountdown,
+  formatBiberonInverseTimer,
   resolveBiberonInputMode,
   serializeTeteeNote,
   getTeteeToast,
 } from "@/lib/biberon";
 import {
   countTodayEvents,
-  getContextualMessage,
   getEventToastMessage,
   isToday,
   type BabyMessageContext,
@@ -261,7 +258,6 @@ export default function Home() {
   const [pendingCardType, setPendingCardType] = useState<EventType | null>(null);
   const [pendingShare, setPendingShare] = useState(false);
   const [demoReady, setDemoReady] = useState(false);
-  const [alertTick, setAlertTick] = useState(0);
   const [babySetupError, setBabySetupError] = useState<string | null>(null);
   const [babyContext, setBabyContext] = useState<BabyMessageContext | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -518,13 +514,6 @@ export default function Home() {
       fetchEvents();
     }
   }, [fetchEvents, isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated && demoBaby) {
-      const interval = setInterval(() => setAlertTick((t) => t + 1), 60000);
-      return () => clearInterval(interval);
-    }
-  }, [isAuthenticated, demoBaby]);
 
   const scopeId = isAuthenticated ? userScopeId : demoSessionId;
 
@@ -1006,17 +995,6 @@ export default function Home() {
     router.push("/");
   }
 
-  const demoBanner = useMemo(() => {
-    if (isAuthenticated || !demoBaby) return null;
-    void alertTick;
-    return getDemoFeedingBanner(demoBaby, events, lastRecordedEventType);
-  }, [isAuthenticated, demoBaby, events, lastRecordedEventType, alertTick]);
-
-  const contextualMessage = useMemo(() => {
-    if (!babyContext) return null;
-    return getContextualMessage(babyContext, events);
-  }, [babyContext, events]);
-
   const dailyScore = useMemo(
     () => ({
       biberon: countTodayEvents(events, "biberon"),
@@ -1072,6 +1050,36 @@ export default function Home() {
     ? getBiberonRecommandation(getAgeInDays(feedingProfile.date_naissance)).ml
     : 120;
 
+  const biberonAlert = useMemo(() => {
+    void biberonTick;
+    if (!feedingProfile?.prenom || !feedingProfile.date_naissance) return null;
+    return getBiberonAlertState({
+      dernierBiberon: lastBiberon ?? null,
+      prenom: feedingProfile.prenom,
+      sexe: feedingProfile.sexe,
+      ageEnJours: getAgeInDays(feedingProfile.date_naissance),
+      parcours: feedingProfile.parcours ?? "artificiel",
+    });
+  }, [biberonTick, lastBiberon, feedingProfile]);
+
+  const biberonInverseTimer = useMemo(() => {
+    void biberonTick;
+    if (
+      !biberonAlert?.afficherMinuteurInverse ||
+      !biberonAlert.minuteurMode ||
+      !lastBiberon ||
+      !feedingProfile?.date_naissance
+    ) {
+      return null;
+    }
+    return formatBiberonInverseTimer(
+      lastBiberon.created_at,
+      getAgeInDays(feedingProfile.date_naissance),
+      feedingProfile.parcours ?? "artificiel",
+      biberonAlert.minuteurMode
+    );
+  }, [biberonTick, biberonAlert, lastBiberon, feedingProfile]);
+
   const biberonMlValue = Math.min(
     350,
     Math.max(10, parseInt(biberonMl, 10) || recommendedMl)
@@ -1094,22 +1102,6 @@ export default function Home() {
     recommendedMl,
     feedingProfile?.prenom,
   ]);
-
-  const biberonCountdown = useMemo(() => {
-    void biberonTick;
-    return getBiberonCountdown(
-      lastBiberon?.created_at ?? null,
-      feedingProfile?.date_naissance
-    );
-  }, [biberonTick, lastBiberon, feedingProfile?.date_naissance]);
-
-  const biberonCountdownTimer = useMemo(() => {
-    void biberonTick;
-    return formatBiberonCountdownTimer(
-      lastBiberon?.created_at ?? null,
-      feedingProfile?.date_naissance
-    );
-  }, [biberonTick, lastBiberon, feedingProfile?.date_naissance]);
 
   if (!skeletonRevealed) {
     return <HomeSkeleton />;
@@ -1341,9 +1333,9 @@ export default function Home() {
         </motion.section>
 
         <AnimatePresence>
-          {contextualMessage && (
+          {biberonAlert && !biberonAlert.bandeauCouleur && (
             <motion.section
-              key={contextualMessage.text}
+              key={biberonAlert.message}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
@@ -1352,44 +1344,35 @@ export default function Home() {
                 backgroundColor: "white",
                 borderRadius: 16,
                 padding: 16,
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 12,
                 boxShadow: "0 4px 16px rgba(74,63,92,0.06)",
               }}
             >
-              <span style={{ fontSize: 22, lineHeight: 1 }}>
-                {contextualMessage.emoji}
-              </span>
               <p
                 style={{
                   fontSize: 14,
                   color: "#4A3F5C",
                   margin: 0,
                   lineHeight: 1.5,
-                  flex: 1,
+                  textAlign: "center",
                 }}
               >
-                {contextualMessage.text}
+                {biberonAlert.message}
               </p>
             </motion.section>
           )}
         </AnimatePresence>
 
-        {/* Alerte */}
-        <motion.section
-          animate={{
-            backgroundColor: demoBanner?.backgroundColor ?? "#FFF3CD",
-          }}
-          transition={{ duration: 0.4 }}
-          className="rounded-3xl px-4 py-3 shadow-md"
-        >
-          <p className="text-sm leading-relaxed text-[#4A3F5C]">
-            {demoBanner
-              ? `⏰ ${demoBanner.message}`
-              : `⏰ ${getBiberonAlert(events)}`}
-          </p>
-        </motion.section>
+        {biberonAlert?.bandeauCouleur && (
+          <motion.section
+            animate={{ backgroundColor: biberonAlert.bandeauCouleur }}
+            transition={{ duration: 0.4 }}
+            className="rounded-3xl px-4 py-3 shadow-md"
+          >
+            <p className="text-sm leading-relaxed text-[#4A3F5C]">
+              {biberonAlert.message}
+            </p>
+          </motion.section>
+        )}
 
         <section
           style={{
@@ -1412,28 +1395,34 @@ export default function Home() {
           >
             <p className="text-4xl">🍼</p>
             <p className="mt-2 font-bold text-[#4A3F5C]">Biberon</p>
-            {lastBiberon && biberonCountdownTimer ? (
+            {biberonInverseTimer ? (
               <>
                 <p
                   style={{
                     marginTop: 6,
                     fontSize: 11,
-                    color: biberonCountdown?.overdue ? "#E8406A" : "#8B7FA0",
+                    color:
+                      biberonAlert?.minuteurMode === "overtime"
+                        ? "#E8406A"
+                        : "#8B7FA0",
                     fontWeight: 600,
                   }}
                 >
-                  {biberonCountdown?.label}
+                  {biberonAlert?.message}
                 </p>
                 <p
                   style={{
                     marginTop: 4,
-                    fontSize: 20,
+                    fontSize: 16,
                     fontWeight: 700,
-                    color: biberonCountdown?.overdue ? "#E8406A" : "#4A3F5C",
+                    color:
+                      biberonAlert?.minuteurMode === "overtime"
+                        ? "#E8406A"
+                        : "#4A3F5C",
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  {biberonCountdownTimer}
+                  {biberonInverseTimer}
                 </p>
               </>
             ) : (
