@@ -342,11 +342,12 @@ export default function ProfilPage() {
 
       const { data: profile } = await supabaseClient
         .from('profiles')
-        .select('family_id, role, prenom, prenom_maman, prenom_papa')
+        .select('*')
         .eq('id', user.id)
-        .maybeSingle()
+        .single()
 
       if (!profile?.family_id) {
+        setFormError('Profil famille introuvable')
         setLoading(false)
         return
       }
@@ -394,46 +395,53 @@ export default function ProfilPage() {
 
       if (membresData) setMembres(membresData as FamilyMemberProfile[])
 
-      const { data: baby, error: babyError } = await supabaseClient
+      const { data: babyData, error: babyError } = await supabaseClient
         .from('babies')
-        .select('*, type_lait, intolerances')
+        .select('*')
         .eq('family_id', profile.family_id)
-        .single()
+        .maybeSingle()
 
       if (babyError) {
-        console.error('[Profil] baby load error:', babyError)
+        console.error('Baby error:', babyError)
+        setFormError(`Erreur: ${babyError.message}`)
+        setLoading(false)
+        return
       }
 
-      if (baby) {
-        const record = baby as BabyRecord
-        setBabyId(record.id)
-        setPrenom(record.prenom ?? '')
-        setSexe((record.sexe as DemoBabySexe) ?? '')
-        setDateNaissance(record.date_naissance ?? '')
-        setPoidsNaissance(
-          record.poids_naissance ? String(record.poids_naissance) : ''
-        )
-        setPoidsActuel(
-          String(
-            record.poids_actuel ??
-              loadPoidsActuel() ??
-              record.poids_naissance ??
-              ''
-          )
-        )
-        setParcours((record.parcours as DemoParcours) ?? '')
-        setTypeLait((record.type_lait as TypeLait) ?? '')
-        setIntolerances(parseIntolerances(record.intolerances))
-
-        const events = await fetchEventsFromDb(user.id)
-        setStats(
-          computeProfileStats(
-            events,
-            record.poids_actuel ?? loadPoidsActuel() ?? null,
-            record.poids_naissance ?? null
-          )
-        )
+      if (!babyData) {
+        setFormError(`Bébé introuvable pour family_id: ${profile.family_id}`)
+        setLoading(false)
+        return
       }
+
+      const record = babyData as BabyRecord
+      setBabyId(record.id)
+      setPrenom(record.prenom ?? '')
+      setSexe((record.sexe as DemoBabySexe) ?? '')
+      setDateNaissance(record.date_naissance ?? '')
+      setPoidsNaissance(
+        record.poids_naissance ? String(record.poids_naissance) : ''
+      )
+      setPoidsActuel(
+        String(
+          record.poids_actuel ??
+            loadPoidsActuel() ??
+            record.poids_naissance ??
+            ''
+        )
+      )
+      setParcours((record.parcours as DemoParcours) ?? '')
+      setTypeLait((record.type_lait as TypeLait) ?? '')
+      setIntolerances(parseIntolerances(record.intolerances))
+
+      const events = await fetchEventsFromDb(user.id)
+      setStats(
+        computeProfileStats(
+          events,
+          record.poids_actuel ?? loadPoidsActuel() ?? null,
+          record.poids_naissance ?? null
+        )
+      )
 
       setLoading(false)
     }
