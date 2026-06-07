@@ -396,44 +396,20 @@ export default function Home() {
     setUserScopeId("");
 
     const sessionId = getOrCreateSessionId();
-    setDemoSessionId(sessionId);
-
-    if (hasDemoBaby(sessionId)) {
-      const storedBaby = getDemoBaby(sessionId);
-      if (storedBaby) {
-        applyDemoBabyToUI(storedBaby);
-      }
-    }
+    const storedBaby = getDemoBaby(sessionId);
 
     try {
       const demoEvents = await fetchDemoEvents(sessionId);
       setEvents(demoEvents);
 
       if (
-        hasDemoBaby(sessionId) &&
+        storedBaby &&
         isReturningAfter24h(demoEvents) &&
         !wasInvite24hShown(sessionId)
       ) {
         markInvite24hShown(sessionId);
         setShowSignupModal(true);
       }
-    } catch (error) {
-      console.error("Demo error:", error);
-    }
-  }
-
-  async function handleStartDemo() {
-    const sessionId = getOrCreateSessionId();
-    setDemoSessionId(sessionId);
-
-    const storedBaby = getDemoBaby(sessionId);
-    if (storedBaby) {
-      applyDemoBabyToUI(storedBaby);
-    }
-
-    try {
-      const demoEvents = await fetchDemoEvents(sessionId);
-      setEvents(demoEvents);
     } catch (error) {
       console.error("Demo error:", error);
     }
@@ -536,8 +512,7 @@ export default function Home() {
   }
 
   function activateModeNuit(state: ModeNuitState) {
-    if (!isAuthenticated) return;
-    const id = userScopeId;
+    const id = isAuthenticated ? userScopeId : demoSessionId;
     if (!id) return;
     saveModeNuit(id, state);
     setModeNuit(true);
@@ -546,8 +521,7 @@ export default function Home() {
   }
 
   function deactivateModeNuit() {
-    if (!isAuthenticated) return;
-    const id = userScopeId;
+    const id = isAuthenticated ? userScopeId : demoSessionId;
     if (!id) return;
     clearModeNuit(id);
     setModeNuit(false);
@@ -607,6 +581,15 @@ export default function Home() {
   useLayoutEffect(() => {
     const sessionId = getOrCreateSessionId();
     setDemoSessionId(sessionId);
+
+    const storedBaby = getDemoBaby(sessionId);
+    if (storedBaby) {
+      applyDemoBabyToUI(storedBaby);
+    } else {
+      setDemoBaby(null);
+      setBabyInfo("votre bébé");
+    }
+
     setDemoReady(true);
     setLoading(false);
   }, []);
@@ -779,14 +762,14 @@ export default function Home() {
   const scopeId = isAuthenticated ? userScopeId : demoSessionId;
 
   useEffect(() => {
-    if (!scopeId || !isAuthenticated) return;
+    if (!scopeId) return;
     const saved = loadModeNuit(scopeId);
     if (saved?.actif) {
       setModeNuit(true);
       setModeNuitData(saved);
       if (saved.coucher) setNuitCoucher(saved.coucher);
     }
-  }, [scopeId, isAuthenticated]);
+  }, [scopeId]);
 
   useLayoutEffect(() => {
     const savedSieste = loadSiesteActive();
@@ -1577,6 +1560,8 @@ export default function Home() {
     return <HomeSkeleton />;
   }
 
+  const displayBabyInfo = isAuthenticated ? babyInfo : "votre bébé";
+
   return (
     <main className="min-h-screen" style={{ backgroundColor: "#FDF8F2" }}>
       {/* Logo + avatar */}
@@ -1584,7 +1569,7 @@ export default function Home() {
         className="relative"
         style={{
           padding: "24px 20px",
-          minHeight: isAuthenticated ? "140px" : "auto",
+          minHeight: "140px",
           display: "flex",
           justifyContent: "center",
         }}
@@ -1739,7 +1724,6 @@ export default function Home() {
         />
       </header>
 
-      {isAuthenticated && (
       <div
         style={{
           maxWidth: 448,
@@ -1766,9 +1750,9 @@ export default function Home() {
           {dailyScore.reveils} réveils
         </motion.div>
       </div>
-      )}
 
-      {isAuthenticated && coucheDashboardAlerts.map((alert) => (
+      {isAuthenticated &&
+        coucheDashboardAlerts.map((alert) => (
         <div
           key={alert.message}
           style={{
@@ -1843,100 +1827,7 @@ export default function Home() {
           </p>
         )}
 
-        {!isAuthenticated && (
-          <div
-            style={{
-              backgroundColor: "white",
-              borderRadius: 24,
-              padding: 32,
-              textAlign: "center",
-              boxShadow: "0 8px 32px rgba(74,63,92,0.10)",
-              marginBottom: 16,
-            }}
-          >
-            <p style={{ fontSize: 64, marginBottom: 16, margin: "0 0 16px" }}>
-              👶
-            </p>
-            <h2
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                color: "#4A3F5C",
-                margin: "0 0 8px",
-              }}
-            >
-              Suivez votre bébé au quotidien
-            </h2>
-            <p
-              style={{
-                fontSize: 14,
-                color: "#8B7FA0",
-                marginBottom: 24,
-                marginTop: 0,
-              }}
-            >
-              Biberons, couches, sommeil...
-              <br />
-              tout en un seul endroit
-            </p>
-            <button
-              type="button"
-              onClick={() => router.push("/register")}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "14px 16px",
-                borderRadius: 16,
-                backgroundColor: "#E8406A",
-                color: "white",
-                fontSize: 15,
-                fontWeight: 700,
-                border: "none",
-                cursor: "pointer",
-                marginBottom: 10,
-              }}
-            >
-              Créer un compte
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/login")}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "14px 16px",
-                borderRadius: 16,
-                backgroundColor: "white",
-                border: "1.5px solid #E8406A",
-                color: "#E8406A",
-                fontSize: 15,
-                fontWeight: 700,
-                cursor: "pointer",
-                marginBottom: 16,
-              }}
-            >
-              Se connecter
-            </button>
-            <button
-              type="button"
-              onClick={handleStartDemo}
-              style={{
-                background: "none",
-                border: "none",
-                fontSize: 13,
-                color: "#8B7FA0",
-                cursor: "pointer",
-                textDecoration: "underline",
-                padding: "4px 8px",
-              }}
-            >
-              Essayer sans compte →
-            </button>
-          </div>
-        )}
-
-        {/* Statut / Mode nuit — comptes connectés uniquement */}
-        {isAuthenticated && (
+        {/* Statut / Mode nuit */}
         <motion.section
           animate={{
             backgroundColor:
@@ -2012,11 +1903,10 @@ export default function Home() {
                 margin: 0,
               }}
             >
-              Tout va bien ✅ · {babyInfo}
+              Tout va bien ✅ · {displayBabyInfo}
             </p>
           )}
         </motion.section>
-        )}
 
         {isAuthenticated && (
         <AnimatePresence>
@@ -2286,6 +2176,27 @@ export default function Home() {
             </p>
           </motion.button>
         </section>
+
+        {!isAuthenticated && (
+          <div style={{ textAlign: "center" }}>
+            <button
+              type="button"
+              onClick={handleShareClick}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#8B7FA0",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                textDecoration: "underline",
+                padding: "4px 8px",
+              }}
+            >
+              Partager
+            </button>
+          </div>
+        )}
 
         {/* Timeline */}
         <section className="rounded-3xl bg-white px-5 py-5 shadow-md">
