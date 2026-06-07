@@ -129,6 +129,7 @@ export default function LoginPage() {
                 cursor: "pointer",
                 fontWeight: 600,
                 textDecoration: "none",
+                marginTop: 12,
                 boxSizing: "border-box",
               }}
             >

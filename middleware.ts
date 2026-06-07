@@ -35,6 +35,7 @@ export async function middleware(request: NextRequest) {
   const isHome = pathname === "/";
   const isLogin = pathname.startsWith("/login");
   const isRegister = pathname.startsWith("/register");
+  const isRejoindre = pathname.startsWith("/rejoindre");
   const isOnboarding = pathname.startsWith("/onboarding");
   const isProfil = pathname.startsWith("/profil");
   const isSuivi = pathname.startsWith("/suivi");
@@ -55,6 +56,7 @@ export async function middleware(request: NextRequest) {
     !isHome &&
     !isLogin &&
     !isRegister &&
+    !isRejoindre &&
     !isSuivi &&
     !isChat &&
     !isApiChat
