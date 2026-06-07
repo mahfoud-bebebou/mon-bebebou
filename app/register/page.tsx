@@ -16,7 +16,7 @@ import {
   type TypeLait,
 } from "@/lib/couche";
 import { RoleGrid } from "@/components/RoleGrid";
-import { generateInviteCode } from "@/lib/family";
+import { generateInviteCodeFromFamilyId } from "@/lib/family";
 
 function createSupabaseClient() {
   return createBrowserClient(
@@ -190,18 +190,24 @@ export default function RegisterPage() {
       const userId = data.user?.id;
       if (!userId) throw new Error("Pas de user id");
 
-      const inviteCode = generateInviteCode();
       const { data: family, error: familyError } = await supabase
         .from("families")
         .insert({
           name: familyName.trim(),
           created_by: userId,
-          invite_code: inviteCode,
         })
         .select()
         .single();
 
       if (familyError) throw familyError;
+
+      const familyInviteCode = generateInviteCodeFromFamilyId(family.id);
+      const { error: inviteUpdateError } = await supabase
+        .from("families")
+        .update({ invite_code: familyInviteCode })
+        .eq("id", family.id);
+
+      if (inviteUpdateError) throw inviteUpdateError;
 
       const monPrenom =
         selectedRole === "maman"

@@ -43,7 +43,7 @@ export default function RejoindrePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const codeComplete = code.trim().length === 6;
+  const codeComplete = code.trim().length === 8;
   const canSubmit = codeComplete && selectedRole.length > 0;
 
   async function handleJoin() {
@@ -200,15 +200,15 @@ export default function RejoindrePage() {
               marginBottom: 16,
             }}
           >
-            <label style={labelStyle}>Code d&apos;invitation (6 caractères)</label>
+            <label style={labelStyle}>Code d&apos;invitation (8 caractères)</label>
             <input
               type="text"
               value={code}
               onChange={(e) =>
-                setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))
+                setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8))
               }
-              placeholder="ABC123"
-              maxLength={6}
+              placeholder="A B C 1 2 3 4 5"
+              maxLength={8}
               style={{
                 ...inputStyle,
                 fontSize: 22,

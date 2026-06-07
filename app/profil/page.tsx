@@ -36,7 +36,7 @@ import {
   type FamilyMemberProfile,
   extractOnlineUserIds,
   formatLastSeen,
-  generateInviteCode,
+  generateInviteCodeFromFamilyId,
   getMemberPrenom,
 } from '@/lib/family'
 
@@ -340,23 +340,24 @@ export default function ProfilPage() {
         .update({ last_seen: new Date().toISOString() })
         .eq('id', user.id)
 
+      const expectedInviteCode = generateInviteCodeFromFamilyId(profile.family_id)
+
       const { data: familyRow } = await supabaseClient
         .from('families')
         .select('invite_code')
         .eq('id', profile.family_id)
         .maybeSingle()
 
-      if (familyRow?.invite_code) {
+      if (familyRow?.invite_code === expectedInviteCode) {
         setInviteCode(familyRow.invite_code)
       } else {
-        const newCode = generateInviteCode()
         const { data: updated } = await supabaseClient
           .from('families')
-          .update({ invite_code: newCode })
+          .update({ invite_code: expectedInviteCode })
           .eq('id', profile.family_id)
           .select('invite_code')
           .maybeSingle()
-        setInviteCode(updated?.invite_code ?? newCode)
+        setInviteCode(updated?.invite_code ?? expectedInviteCode)
       }
 
       const { data: membresData } = await supabaseClient

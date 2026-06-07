@@ -9,10 +9,14 @@ export type FamilyMemberProfile = {
   last_seen?: string | null;
 };
 
+export function generateInviteCodeFromFamilyId(familyId: string): string {
+  return familyId.replace(/-/g, "").slice(0, 8).toUpperCase();
+}
+
 export function generateInviteCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from(
-    { length: 6 },
+    { length: 8 },
     () => chars[Math.floor(Math.random() * chars.length)]
   ).join("");
 }
