@@ -1451,7 +1451,7 @@ export default function Home() {
           selle_odeur: selleOdeur,
           signes_associes: signesAssocies,
         },
-        sommeilPrenom
+        isAuthenticated ? sommeilPrenom : "votre bébé"
       ),
     [
       coucheType,
@@ -1463,6 +1463,7 @@ export default function Home() {
       selleOdeur,
       signesAssocies,
       sommeilPrenom,
+      isAuthenticated,
     ]
   );
 
@@ -1506,9 +1507,15 @@ export default function Home() {
   );
 
   const sommeilSubtitle = useMemo(() => {
+    if (!isAuthenticated) return "Aucun enregistrement";
     if (!lastSleepEvent) return "Aucun enregistrement";
     return getCardSubtitle(lastSleepEvent.type, events);
-  }, [lastSleepEvent, events]);
+  }, [lastSleepEvent, events, isAuthenticated]);
+
+  function getDashboardCardSubtitle(type: EventType) {
+    if (!isAuthenticated) return "Aucun enregistrement";
+    return getCardSubtitle(type, events);
+  }
 
   const recommendedMl = feedingProfile?.date_naissance
     ? getBiberonRecommandation(getAgeInDays(feedingProfile.date_naissance)).ml
@@ -1544,11 +1551,13 @@ export default function Home() {
   }
 
   const biberonFeedback = useMemo(() => {
+    if (!isAuthenticated) return null;
     if (biberonInputMode !== "ml" || !biberonMlEdited) return null;
     const qty = parseInt(biberonMl, 10);
     if (!feedingProfile?.prenom) return null;
     return getBiberonQuantityFeedback(qty, recommendedMl, feedingProfile.prenom);
   }, [
+    isAuthenticated,
     biberonInputMode,
     biberonMl,
     biberonMlEdited,
@@ -1561,6 +1570,7 @@ export default function Home() {
   }
 
   const displayBabyInfo = isAuthenticated ? babyInfo : "votre bébé";
+  const displayBabyName = isAuthenticated ? sommeilPrenom : "votre bébé";
 
   return (
     <main className="min-h-screen" style={{ backgroundColor: "#FDF8F2" }}>
@@ -2017,7 +2027,7 @@ export default function Home() {
               <p className="mt-1 text-xs text-[#8B7FA0]">
                 {saving
                   ? "Enregistrement..."
-                  : getCardSubtitle("biberon", events)}
+                  : getDashboardCardSubtitle("biberon")}
               </p>
             )}
           </motion.button>
@@ -2037,7 +2047,7 @@ export default function Home() {
             <p className="text-4xl">🌿</p>
             <p className="mt-2 font-bold text-[#4A3F5C]">Couche</p>
             <p className="mt-1 text-xs text-[#8B7FA0]">
-              {saving ? "Enregistrement..." : getCardSubtitle("couche", events)}
+              {saving ? "Enregistrement..." : getDashboardCardSubtitle("couche")}
             </p>
           </motion.button>
 
@@ -2172,7 +2182,7 @@ export default function Home() {
             <p className="text-4xl">😢</p>
             <p className="mt-2 font-bold text-[#4A3F5C]">Bébé pleure</p>
             <p className="mt-1 text-xs text-[#8B7FA0]">
-              {saving ? "Enregistrement..." : getCardSubtitle("pleure", events)}
+              {saving ? "Enregistrement..." : getDashboardCardSubtitle("pleure")}
             </p>
           </motion.button>
         </section>
@@ -2204,11 +2214,11 @@ export default function Home() {
             Aujourd&apos;hui
           </h2>
 
-          {todayEvents.length === 0 ? (
+          {isAuthenticated && todayEvents.length === 0 ? (
             <p className="text-sm text-[#8B7FA0]">
               Aucun événement — cliquez sur une carte pour commencer
             </p>
-          ) : (
+          ) : isAuthenticated ? (
             <ul className="space-y-3">
               {todayEvents.map((event) => (
                 <li key={event.id} className="flex items-center gap-3">
@@ -2222,6 +2232,10 @@ export default function Home() {
                 </li>
               ))}
             </ul>
+          ) : (
+            <p className="text-sm text-[#8B7FA0]">
+              Aucun événement — cliquez sur une carte pour commencer
+            </p>
           )}
         </section>
 
@@ -2389,7 +2403,9 @@ export default function Home() {
                     boxSizing: "border-box",
                   }}
                 />
-                {feedingProfile?.prenom && feedingProfile.date_naissance && (
+                {(isAuthenticated
+                  ? feedingProfile?.prenom && feedingProfile.date_naissance
+                  : true) && (
                     <p
                       style={{
                         marginTop: 10,
@@ -2398,18 +2414,20 @@ export default function Home() {
                         textAlign: "center",
                       }}
                     >
-                      {(() => {
-                        const age = formatExactBabyAge(
-                          feedingProfile.date_naissance
-                        );
-                        const base = `Recommandé pour ${feedingProfile.prenom} à ${age}`;
-                        const poids =
-                          feedingProfile.poids_actuel ??
-                          feedingProfile.poids_naissance;
-                        return poids
-                          ? `${base} · ${poids}kg`
-                          : base;
-                      })()}
+                      {isAuthenticated
+                        ? (() => {
+                            const age = formatExactBabyAge(
+                              feedingProfile!.date_naissance
+                            );
+                            const base = `Recommandé pour ${feedingProfile!.prenom} à ${age}`;
+                            const poids =
+                              feedingProfile!.poids_actuel ??
+                              feedingProfile!.poids_naissance;
+                            return poids
+                              ? `${base} · ${poids}kg`
+                              : base;
+                          })()
+                        : "Recommandé pour votre bébé"}
                     </p>
                   )}
                 {biberonFeedback && (
@@ -2455,7 +2473,9 @@ export default function Home() {
                   min="1"
                   autoFocus
                 />
-                {feedingProfile?.prenom && feedingProfile.date_naissance && (
+                {isAuthenticated &&
+                  feedingProfile?.prenom &&
+                  feedingProfile.date_naissance && (
                   <p
                     style={{
                       marginTop: 10,
@@ -2574,7 +2594,7 @@ export default function Home() {
             textAlign: "center",
           }}
         >
-          🌿 Couche de {sommeilPrenom}
+          🌿 Couche de {displayBabyName}
         </h2>
 
         <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#4A3F5C", marginBottom: 6 }}>
@@ -3342,7 +3362,7 @@ export default function Home() {
             textAlign: "center",
           }}
         >
-          😴 Sieste de {sommeilPrenom}
+          😴 Sieste de {displayBabyName}
         </h2>
         <p
           style={{
@@ -3426,7 +3446,7 @@ export default function Home() {
             textAlign: "center",
           }}
         >
-          ☀️ Réveil de {sommeilPrenom}
+          ☀️ Réveil de {displayBabyName}
         </h2>
         <p
           style={{
@@ -3507,7 +3527,7 @@ export default function Home() {
 
       <ModalSheet open={activeModal === "sommeil_nuit_start"} onClose={closeModal} centered>
         <h2 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 700, color: "#4A3F5C", textAlign: "center" }}>
-          🌙 Bonne nuit pour {sommeilPrenom}
+          🌙 Bonne nuit pour {displayBabyName}
         </h2>
         <label style={{ display: "block", fontSize: 13, color: "#8B7FA0" }}>Heure coucher</label>
         <input
@@ -3555,7 +3575,7 @@ export default function Home() {
 
       <ModalSheet open={activeModal === "sommeil_nuit_wake"} onClose={closeModal} centered>
         <h2 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 700, color: "#4A3F5C", textAlign: "center" }}>
-          ☀️ Réveil de {sommeilPrenom}
+          ☀️ Réveil de {displayBabyName}
         </h2>
         <label style={{ display: "block", fontSize: 13, color: "#8B7FA0" }}>Heure de réveil</label>
         <input
