@@ -39,7 +39,7 @@ export default function LoginPage() {
   return (
     <main
       className="flex min-h-screen flex-col items-center justify-center px-4 py-10"
-      style={{ backgroundColor: "#FDF8F2", paddingBottom: 100 }}
+      style={{ backgroundColor: "#FDF8F2", paddingBottom: "100px" }}
     >
       <div className="w-full max-w-sm">
         <header className="mb-8 flex justify-center">
@@ -134,6 +134,8 @@ export default function LoginPage() {
                 padding: "14px 16px",
                 cursor: "pointer",
                 fontWeight: 600,
+                position: "relative",
+                zIndex: 20,
               }}
             >
               👨‍👩‍👧 Rejoindre la famille de mon co-parent
