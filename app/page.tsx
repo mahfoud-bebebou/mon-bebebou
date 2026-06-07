@@ -115,6 +115,19 @@ type AddEventOptions = {
   customToast?: string;
 };
 
+type AuthenticatedBaby = {
+  id: string;
+  prenom?: string | null;
+  name?: string | null;
+  date_naissance?: string | null;
+  birthdate?: string | null;
+  sexe?: string | null;
+  poids_naissance?: number | null;
+  poids_actuel?: number | null;
+  parcours?: string | null;
+  family_id?: string | null;
+};
+
 function createSupabaseClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -242,9 +255,7 @@ export default function Home() {
   const [toastKey, setToastKey] = useState(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [userScopeId, setUserScopeId] = useState("");
-  const [authenticatedBabyId, setAuthenticatedBabyId] = useState<string | null>(
-    null
-  );
+  const [baby, setBaby] = useState<AuthenticatedBaby | null>(null);
   const [activeSieste, setActiveSieste] = useState<ActiveSieste | null>(null);
   const [chronoTick, setChronoTick] = useState(0);
   const [nightUiTick, setNightUiTick] = useState(0);
@@ -287,6 +298,100 @@ export default function Home() {
       poids_actuel: baby.poids_actuel ?? baby.poids_naissance,
       parcours: baby.parcours,
     };
+  }
+
+  function applyAuthenticatedBabyToUI(babyData: AuthenticatedBaby) {
+    const prenom = babyData.prenom ?? babyData.name;
+    const birthdate = babyData.date_naissance ?? babyData.birthdate;
+    if (prenom && birthdate) {
+      setBabyInfo(`${prenom} · ${getBabyAge(birthdate)}`);
+      setBabyContext({
+        prenom,
+        sexe: (babyData.sexe as DemoBabySexe) ?? null,
+        date_naissance: birthdate,
+        poids_naissance: babyData.poids_naissance ?? null,
+        poids_actuel: babyData.poids_actuel ?? babyData.poids_naissance ?? null,
+        parcours: (babyData.parcours as DemoParcours) ?? null,
+      });
+    }
+  }
+
+  async function loadAnonymousDemoData() {
+    setIsAuthenticated(false);
+    setBaby(null);
+    setUserEmail(null);
+    setUserScopeId("");
+
+    const sessionId = getOrCreateSessionId();
+    const storedBaby = getDemoBaby(sessionId);
+
+    try {
+      const demoEvents = await fetchDemoEvents(sessionId);
+      setEvents(demoEvents);
+
+      if (
+        storedBaby &&
+        isReturningAfter24h(demoEvents) &&
+        !wasInvite24hShown(sessionId)
+      ) {
+        markInvite24hShown(sessionId);
+        setShowSignupModal(true);
+      }
+    } catch (error) {
+      console.error("Demo error:", error);
+    }
+  }
+
+  async function loadBabyData(): Promise<AuthenticatedBaby | null> {
+    const supabaseClient = createSupabaseClient();
+    const {
+      data: { user },
+    } = await supabaseClient.auth.getUser();
+
+    if (!user) {
+      await loadAnonymousDemoData();
+      return null;
+    }
+
+    setIsAuthenticated(true);
+    setUserEmail(user.email ?? null);
+    setUserScopeId(user.id);
+
+    const { data: profile, error: profileError } = await supabaseClient
+      .from("profiles")
+      .select("family_id, prenom_maman, prenom_papa")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError) {
+      console.error("Profile load error:", profileError);
+    }
+
+    if (!profile?.family_id) {
+      console.error("No family_id on profile for user", user.id);
+      setBaby(null);
+      return null;
+    }
+
+    const { data: babyData, error: babyError } = await supabaseClient
+      .from("babies")
+      .select("*")
+      .eq("family_id", profile.family_id)
+      .single();
+
+    if (babyError) {
+      console.error("Baby load error:", babyError);
+    }
+
+    if (!babyData) {
+      setBaby(null);
+      return null;
+    }
+
+    setBaby(babyData);
+    console.log("Baby loaded:", babyData.id, babyData.prenom);
+    applyAuthenticatedBabyToUI(babyData);
+    return babyData;
   }
 
   function openBiberonModal() {
@@ -352,83 +457,18 @@ export default function Home() {
   }, [authChecked]);
 
   useEffect(() => {
-    async function checkAuth() {
+    async function init() {
       try {
-        const supabaseClient = createSupabaseClient();
-        const {
-          data: { user },
-        } = await supabaseClient.auth.getUser();
-
-        if (!user) {
-          setIsAuthenticated(false);
-
-          const sessionId = getOrCreateSessionId();
-          const storedBaby = getDemoBaby(sessionId);
-
-          try {
-            const demoEvents = await fetchDemoEvents(sessionId);
-            setEvents(demoEvents);
-
-            if (
-              storedBaby &&
-              isReturningAfter24h(demoEvents) &&
-              !wasInvite24hShown(sessionId)
-            ) {
-              markInvite24hShown(sessionId);
-              setShowSignupModal(true);
-            }
-          } catch (error) {
-            console.error("Demo error:", error);
+        const babyData = await loadBabyData();
+        if (babyData) {
+          const supabaseClient = createSupabaseClient();
+          const {
+            data: { user },
+          } = await supabaseClient.auth.getUser();
+          if (user) {
+            const data = await fetchEventsFromDb(user.id);
+            setEvents(data);
           }
-
-          return;
-        }
-
-        setIsAuthenticated(true);
-        setUserEmail(user.email ?? null);
-        setUserScopeId(user.id);
-
-        const { data: profile } = await supabaseClient
-          .from("profiles")
-          .select("family_id")
-          .eq("id", user.id)
-          .single();
-
-        let babyQuery = supabaseClient
-          .from("babies")
-          .select(
-            "id, prenom, date_naissance, name, birthdate, sexe, poids_naissance, poids_actuel, parcours, family_id"
-          );
-
-        if (profile?.family_id) {
-          babyQuery = babyQuery.eq("family_id", profile.family_id);
-        }
-
-        const { data: baby, error: babyError } = await babyQuery
-          .limit(1)
-          .single();
-
-        if (babyError) {
-          console.error("Baby load error:", babyError);
-        }
-
-        if (baby?.id) {
-          setAuthenticatedBabyId(baby.id);
-          const prenom = baby.prenom ?? baby.name;
-          const birthdate = baby.date_naissance ?? baby.birthdate;
-          if (prenom && birthdate) {
-            setBabyInfo(`${prenom} · ${getBabyAge(birthdate)}`);
-            setBabyContext({
-              prenom,
-              sexe: baby.sexe ?? null,
-              date_naissance: birthdate,
-              poids_naissance: baby.poids_naissance ?? null,
-              poids_actuel: baby.poids_actuel ?? baby.poids_naissance ?? null,
-              parcours: (baby.parcours as DemoParcours) ?? null,
-            });
-          }
-        } else {
-          setAuthenticatedBabyId(null);
         }
       } catch (error) {
         console.error("Auth check error:", error);
@@ -437,7 +477,7 @@ export default function Home() {
       }
     }
 
-    checkAuth();
+    init();
   }, []);
 
   const fetchEvents = useCallback(async () => {
@@ -609,6 +649,19 @@ export default function Home() {
     setSaving(true);
     setError(null);
 
+    let babyRecord = baby;
+    if (!babyRecord?.id) {
+      babyRecord = await loadBabyData();
+    }
+
+    if (!babyRecord?.id) {
+      setError(
+        "Erreur d'enregistrement : profil bébé introuvable (baby_id manquant)"
+      );
+      setSaving(false);
+      return;
+    }
+
     const supabaseClient = createSupabaseClient();
     const {
       data: { user },
@@ -619,24 +672,17 @@ export default function Home() {
       return;
     }
 
-    if (!authenticatedBabyId) {
-      setError(
-        "Erreur d'enregistrement : profil bébé introuvable (baby_id manquant)"
-      );
-      setSaving(false);
-      return;
-    }
-
+    const valeur = quantity ?? null;
     const row: Record<string, unknown> = {
-      type,
+      baby_id: babyRecord.id,
+      type: eventType,
       note: note ?? null,
-      quantity: quantity ?? null,
+      quantity: valeur,
       user_id: user.id,
-      baby_id: authenticatedBabyId,
       created_at: options?.createdAt ?? new Date().toISOString(),
     };
 
-    console.log("Saving event for baby:", authenticatedBabyId);
+    console.log("Saving event for baby:", babyRecord.id);
 
     const { data, error: insertError } = await supabaseClient
       .from("events")
