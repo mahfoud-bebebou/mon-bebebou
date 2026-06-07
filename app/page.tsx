@@ -167,6 +167,37 @@ function createSupabaseClient() {
   );
 }
 
+const LEGACY_BABY_STORAGE_KEYS = [
+  "baby_prenom",
+  "baby_sexe",
+  "baby_date_naissance",
+  "baby_poids",
+  "baby_poids_actuel",
+  "baby_parcours",
+  "baby_avatar",
+  "baby_photo",
+] as const;
+
+function clearLegacyBabyLocalStorage() {
+  if (typeof window === "undefined") return;
+  LEGACY_BABY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+}
+
+function syncLegacyBabyLocalStorage(baby: DemoBaby) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("baby_prenom", baby.prenom);
+  localStorage.setItem("baby_sexe", baby.sexe);
+  localStorage.setItem("baby_date_naissance", baby.date_naissance);
+  localStorage.setItem("baby_poids", String(baby.poids_naissance));
+  localStorage.setItem("baby_poids_actuel", String(baby.poids_actuel));
+  localStorage.setItem("baby_parcours", baby.parcours);
+}
+
+function hasLegacyBabyPrenom(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean(localStorage.getItem("baby_prenom")?.trim());
+}
+
 function getBabyAge(birthdate: string): string {
   const birth = new Date(birthdate);
   const now = new Date();
@@ -339,6 +370,12 @@ export default function Home() {
     const metrics = computeDemoBabyMetrics(baby);
     setDemoBaby(baby);
     setDemoBabyName(baby.prenom);
+    setDemoBabyPrenom(baby.prenom);
+    setDemoBabySexe(baby.sexe);
+    setDemoBabyDateNaissance(baby.date_naissance);
+    setDemoBabyPoidsNaissance(String(baby.poids_naissance));
+    setDemoBabyPoidsActuel(String(baby.poids_actuel));
+    setDemoBabyParcours(baby.parcours);
     setBabyInfo(`${baby.prenom} · ${metrics.ageLabel}`);
     setBabyContext({
       prenom: baby.prenom,
@@ -350,6 +387,21 @@ export default function Home() {
       type_lait: baby.type_lait ?? null,
       intolerances: baby.intolerances ?? null,
     });
+    syncLegacyBabyLocalStorage(baby);
+  }
+
+  function resetVisitorBabyStates() {
+    setDemoBaby(null);
+    setDemoBabyName("");
+    setDemoBabyPrenom("");
+    setDemoBabySexe("");
+    setDemoBabyDateNaissance("");
+    setDemoBabyPoidsNaissance("");
+    setDemoBabyPoidsActuel("");
+    setDemoBabyParcours("");
+    setBabyContext(null);
+    setBabyInfo("votre bébé");
+    setAvatarUrl(null);
   }
 
   function getFeedingProfile() {
@@ -389,12 +441,23 @@ export default function Home() {
   }
 
   async function loadAnonymousDemoData() {
+    clearLegacyBabyLocalStorage();
+    resetVisitorBabyStates();
+
     setIsAuthenticated(false);
     setBaby(null);
     setUserEmail(null);
     setUserScopeId("");
 
     const sessionId = getOrCreateSessionId();
+    setDemoSessionId(sessionId);
+
+    const storedBaby = getDemoBaby(sessionId);
+    if (storedBaby) {
+      applyDemoBabyToUI(storedBaby);
+      const saved = loadBabyAvatar();
+      if (saved) setAvatarUrl(saved);
+    }
 
     try {
       const demoEvents = await fetchDemoEvents(sessionId);
@@ -570,15 +633,6 @@ export default function Home() {
   useLayoutEffect(() => {
     const sessionId = getOrCreateSessionId();
     setDemoSessionId(sessionId);
-
-    const storedBaby = getDemoBaby(sessionId);
-    if (storedBaby) {
-      applyDemoBabyToUI(storedBaby);
-    } else {
-      setDemoBaby(null);
-      setBabyInfo("votre bébé");
-    }
-
     setDemoReady(true);
     setLoading(false);
   }, []);
@@ -1568,7 +1622,14 @@ export default function Home() {
     return <HomeSkeleton />;
   }
 
-  const displayBabyInfo = showPersonalData ? babyInfo : "votre bébé";
+  const showHeaderBaby =
+    isAuthenticated ||
+    (!isAuthenticated &&
+      hasLegacyBabyPrenom() &&
+      hasDemoBaby(demoSessionId));
+
+  const displayBabyInfo =
+    showHeaderBaby || showPersonalData ? babyInfo : "votre bébé";
   const displayBabyName = showPersonalData ? sommeilPrenom : "votre bébé";
 
   return (
@@ -1718,6 +1779,45 @@ export default function Home() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+        {!isAuthenticated && showHeaderBaby && (
+          <div
+            className="absolute right-4 top-8"
+            style={{
+              zIndex: 2,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#4A3F5C",
+              }}
+            >
+              {babyContext?.prenom ?? demoBabyName}
+            </span>
+            <button
+              type="button"
+              onClick={handleOpenProfil}
+              aria-label="Mon profil"
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                borderRadius: "50%",
+              }}
+            >
+              <BabyAvatar
+                prenom={babyContext?.prenom ?? demoBabyName ?? "?"}
+                photoUrl={avatarUrl}
+                size={48}
+              />
+            </button>
           </div>
         )}
         <img
