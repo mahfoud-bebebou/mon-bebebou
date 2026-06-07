@@ -296,7 +296,9 @@ export default function Home() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastKey, setToastKey] = useState(0);
   const [coParentEnLigne, setCoParentEnLigne] = useState(false);
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const avatarMenuRef = useRef<HTMLDivElement>(null);
   const [userScopeId, setUserScopeId] = useState("");
   const [baby, setBaby] = useState<AuthenticatedBaby | null>(null);
   const [nightUiTick, setNightUiTick] = useState(0);
@@ -748,6 +750,22 @@ export default function Home() {
     const interval = setInterval(() => setChronoTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
   }, [siesteActive, siesteHeureDebut]);
+
+  useEffect(() => {
+    if (!avatarMenuOpen) return;
+
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        avatarMenuRef.current &&
+        !avatarMenuRef.current.contains(event.target as Node)
+      ) {
+        setAvatarMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [avatarMenuOpen]);
 
   useEffect(() => {
     function syncAvatarFromStorage() {
@@ -1281,6 +1299,7 @@ export default function Home() {
   }
 
   async function handleSignOut() {
+    setAvatarMenuOpen(false);
     const supabaseClient = createSupabaseClient();
     await supabaseClient.auth.signOut();
     setIsAuthenticated(false);
@@ -1310,7 +1329,12 @@ export default function Home() {
 
     setLastRecordedEventType(null);
     setLoading(false);
-    router.push("/");
+    router.push("/login");
+  }
+
+  function handleOpenProfil() {
+    setAvatarMenuOpen(false);
+    router.push("/profil");
   }
 
   const dailyScore = useMemo(
@@ -1511,95 +1535,165 @@ export default function Home() {
       >
         {isAuthenticated && userEmail && (
           <div
-            className="absolute left-4 top-8 flex items-center gap-2"
-            style={{ maxWidth: "calc(100% - 120px)", flexWrap: "wrap" }}
+            ref={avatarMenuRef}
+            className="absolute right-4 top-8"
+            style={{ zIndex: 102 }}
           >
-            <span
-              style={{
-                fontSize: 13,
-                color: "#8B7FA0",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {userEmail}
-            </span>
             <button
               type="button"
-              onClick={handleSignOut}
+              onClick={(e) => {
+                e.stopPropagation();
+                setAvatarMenuOpen((open) => !open);
+              }}
+              aria-label="Menu compte"
+              aria-expanded={avatarMenuOpen}
               style={{
-                backgroundColor: "white",
-                border: "1.5px solid #F0E8F8",
-                borderRadius: 20,
-                padding: "6px 14px",
-                fontSize: 13,
-                color: "#8B7FA0",
+                background: "none",
+                border: "none",
+                padding: 0,
                 cursor: "pointer",
-                flexShrink: 0,
+                borderRadius: "50%",
               }}
             >
-              Se déconnecter
+              <BabyAvatar
+                prenom={babyContext?.prenom ?? demoBabyName ?? "?"}
+                photoUrl={avatarUrl}
+                size={48}
+              />
             </button>
-            {baby?.id && (
-              coParentEnLigne ? (
-                <span
+
+            {avatarMenuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 60,
+                  right: 0,
+                  backgroundColor: "white",
+                  borderRadius: 20,
+                  padding: 20,
+                  boxShadow: "0 8px 32px rgba(74,63,92,0.15)",
+                  zIndex: 100,
+                  minWidth: 220,
+                }}
+              >
+                <p
                   style={{
-                    fontSize: 12,
-                    color: "#4CAF50",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    flexShrink: 0,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      backgroundColor: "#4CAF50",
-                      borderRadius: "50%",
-                      display: "inline-block",
-                    }}
-                  />
-                  Co-parent connecté
-                </span>
-              ) : (
-                <span
-                  style={{
+                    margin: 0,
                     fontSize: 12,
                     color: "#8B7FA0",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    flexShrink: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      backgroundColor: "#CCC",
-                      borderRadius: "50%",
-                      display: "inline-block",
-                    }}
-                  />
-                  Co-parent hors ligne
-                </span>
-              )
+                  {userEmail}
+                </p>
+
+                <div
+                  style={{
+                    height: 1,
+                    backgroundColor: "#F0E8F8",
+                    margin: "12px 0",
+                  }}
+                />
+
+                {baby?.id && (
+                  <>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: coParentEnLigne ? "#4CAF50" : "#8B7FA0",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          backgroundColor: coParentEnLigne ? "#4CAF50" : "#CCC",
+                          borderRadius: "50%",
+                          display: "inline-block",
+                          flexShrink: 0,
+                        }}
+                      />
+                      {coParentEnLigne
+                        ? "Co-parent connecté"
+                        : "Co-parent hors ligne"}
+                    </div>
+
+                    <div
+                      style={{
+                        height: 1,
+                        backgroundColor: "#F0E8F8",
+                        margin: "12px 0",
+                      }}
+                    />
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleOpenProfil}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    background: "none",
+                    border: "none",
+                    fontSize: 14,
+                    color: "#4A3F5C",
+                    padding: "10px 0",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  👤 Mon profil
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    background: "none",
+                    border: "none",
+                    fontSize: 14,
+                    color: "#E8406A",
+                    padding: "10px 0",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  🚪 Se déconnecter
+                </button>
+              </div>
             )}
           </div>
         )}
-        <div
-          className="absolute right-4 top-8"
-          style={{ zIndex: 2 }}
-        >
-          <BabyAvatar
-            prenom={babyContext?.prenom ?? demoBabyName ?? "?"}
-            photoUrl={avatarUrl}
-            size={48}
-          />
-        </div>
+        {!isAuthenticated && (
+          <div className="absolute right-4 top-8" style={{ zIndex: 2 }}>
+            <button
+              type="button"
+              onClick={handleOpenProfil}
+              aria-label="Mon profil"
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                borderRadius: "50%",
+              }}
+            >
+              <BabyAvatar
+                prenom={babyContext?.prenom ?? demoBabyName ?? "?"}
+                photoUrl={avatarUrl}
+                size={48}
+              />
+            </button>
+          </div>
+        )}
         <img
           src="/logo-horizontal.png"
           alt="Mon Bebebou"
