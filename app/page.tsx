@@ -56,34 +56,35 @@ import {
 import {
   calcDurationBetweenTimes,
   calcSleepMinutes,
-  clearActiveSieste,
   clearModeNuit,
+  clearSiesteActive,
   combineDateAndTime,
   countTodayReveils,
   dismissNightBanner,
+  buildFinTimestampAfterStart,
   formatChronometer,
   formatDurationCompact,
   formatDurationHM,
+  formatSiesteDurationShort,
   genderEveille,
   genderIlElle,
   genderReveille,
+  getDefaultSiesteStartTime,
   getNightAnalysis,
   getNightModeBiberonMessage,
-  getSiesteEndToast,
   hasNightRecordedToday,
   isMorningPromptHour,
   isNightBannerDismissed,
   isNightModeHour,
-  loadActiveSieste,
   loadModeNuit,
   loadNightBedtime,
-  saveActiveSieste,
+  loadSiesteActive,
   saveModeNuit,
   saveNightBedtime,
+  saveSiesteActive,
   serializeNote,
   SOMMEIL_REVEIL_COUNTS,
   toTimeInputValue,
-  type ActiveSieste,
   type ModeNuitState,
   type SommeilMeta,
 } from "@/lib/sleep";
@@ -105,6 +106,8 @@ type ModalType =
   | "couche"
   | "pleure"
   | "sommeil_choice"
+  | "sommeil_sieste_start"
+  | "sommeil_sieste_end"
   | "sommeil_nuit_start"
   | "sommeil_nuit_wake"
   | null;
@@ -114,6 +117,8 @@ type SleepFormType = "sieste" | "nuit";
 type AddEventOptions = {
   createdAt?: string;
   customToast?: string;
+  toastDuration?: number;
+  toastBackgroundColor?: string;
 };
 
 type AuthenticatedBaby = {
@@ -266,6 +271,7 @@ export default function Home() {
   const [babySetupError, setBabySetupError] = useState<string | null>(null);
   const [babyContext, setBabyContext] = useState<BabyMessageContext | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastBackgroundColor, setToastBackgroundColor] = useState("#4A3F5C");
   const [toastKey, setToastKey] = useState(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [userScopeId, setUserScopeId] = useState("");
@@ -273,7 +279,14 @@ export default function Home() {
   const [nightUiTick, setNightUiTick] = useState(0);
   const [modeNuit, setModeNuit] = useState(false);
   const [modeNuitData, setModeNuitData] = useState<ModeNuitState | null>(null);
-  const [activeSieste, setActiveSieste] = useState<ActiveSieste | null>(null);
+  const [siesteActive, setSiesteActive] = useState(false);
+  const [siesteHeureDebut, setSiesteHeureDebut] = useState<Date | null>(null);
+  const [siesteHeureDebutInput, setSiesteHeureDebutInput] = useState(() =>
+    getDefaultSiesteStartTime()
+  );
+  const [siesteHeureFinInput, setSiesteHeureFinInput] = useState(() =>
+    toTimeInputValue()
+  );
   const [chronoTick, setChronoTick] = useState(0);
   const [nuitCoucher, setNuitCoucher] = useState(toTimeInputValue());
   const [nuitReveilsPrevus, setNuitReveilsPrevus] = useState(0);
@@ -459,11 +472,18 @@ export default function Home() {
     setActiveModal("biberon");
   }
 
-  function showToast(message: string) {
+  function showToast(
+    message: string,
+    options?: { duration?: number; backgroundColor?: string }
+  ) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToastMessage(message);
+    setToastBackgroundColor(options?.backgroundColor ?? "#4A3F5C");
     setToastKey((k) => k + 1);
-    toastTimerRef.current = setTimeout(() => setToastMessage(null), 3000);
+    toastTimerRef.current = setTimeout(
+      () => setToastMessage(null),
+      options?.duration ?? 3000
+    );
   }
 
   function validateBabySetup(): string | null {
@@ -566,14 +586,21 @@ export default function Home() {
       setModeNuitData(saved);
       if (saved.coucher) setNuitCoucher(saved.coucher);
     }
-    setActiveSieste(loadActiveSieste(scopeId));
   }, [scopeId]);
 
+  useLayoutEffect(() => {
+    const savedSieste = loadSiesteActive();
+    if (savedSieste?.actif && savedSieste.heure_debut) {
+      setSiesteHeureDebut(new Date(savedSieste.heure_debut));
+      setSiesteActive(true);
+    }
+  }, []);
+
   useEffect(() => {
-    if (!activeSieste) return;
+    if (!siesteActive || !siesteHeureDebut) return;
     const interval = setInterval(() => setChronoTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
-  }, [activeSieste]);
+  }, [siesteActive, siesteHeureDebut]);
 
   useEffect(() => {
     function syncAvatarFromStorage() {
@@ -672,7 +699,11 @@ export default function Home() {
       if (ctx) {
         showToast(
           options?.customToast ??
-            getEventToastMessage(type, ctx, note, quantity)
+            getEventToastMessage(type, ctx, note, quantity),
+          {
+            duration: options?.toastDuration,
+            backgroundColor: options?.toastBackgroundColor,
+          }
         );
       }
     } catch (err) {
@@ -752,7 +783,11 @@ export default function Home() {
       if (babyContext) {
         showToast(
           options?.customToast ??
-            getEventToastMessage(eventType, babyContext, note, quantity)
+            getEventToastMessage(eventType, babyContext, note, quantity),
+          {
+            duration: options?.toastDuration,
+            backgroundColor: options?.toastBackgroundColor,
+          }
         );
       }
     }
@@ -776,40 +811,66 @@ export default function Home() {
     setActiveModal("sommeil_choice");
   }
 
-  function handleStartSieste() {
-    const id = isAuthenticated ? userScopeId : demoSessionId;
-    if (!id) return;
-    const start = new Date().toISOString();
-    const sieste: ActiveSieste = { scopeId: id, start };
-    saveActiveSieste(sieste);
-    setActiveSieste(sieste);
+  function openSommeilSiesteStart() {
+    setSiesteHeureDebutInput(getDefaultSiesteStartTime());
+    setActiveModal("sommeil_sieste_start");
+  }
+
+  function handleLancerSieste() {
+    const heureDebutTimestamp = combineDateAndTime(
+      new Date(),
+      siesteHeureDebutInput
+    );
+    const heureDebutISO = heureDebutTimestamp.toISOString();
+
+    setSiesteHeureDebut(heureDebutTimestamp);
+    setSiesteActive(true);
+    saveSiesteActive({ actif: true, heure_debut: heureDebutISO });
     setActiveModal(null);
   }
 
-  function handleEndSieste() {
-    if (!activeSieste) return;
-    const ctx = babyContext ?? (demoBaby ? { prenom: demoBaby.prenom, date_naissance: demoBaby.date_naissance } : null);
-    if (!ctx?.prenom) return;
+  function openSommeilSiesteEnd() {
+    if (!siesteActive || !siesteHeureDebut) return;
+    setSiesteHeureFinInput(toTimeInputValue());
+    setActiveModal("sommeil_sieste_end");
+  }
 
-    const end = new Date();
-    const durationMin = Math.max(
+  function closeSommeilSiesteEndModal() {
+    if (saving) return;
+    setActiveModal(null);
+  }
+
+  async function handleSiesteEnregistrer() {
+    if (!siesteHeureDebut) return;
+
+    const heureFinTimestamp = buildFinTimestampAfterStart(
+      siesteHeureDebut,
+      siesteHeureFinInput
+    );
+    const dureeMin = Math.max(
       1,
-      Math.round(
-        (end.getTime() - new Date(activeSieste.start).getTime()) / 60000
+      Math.floor(
+        (heureFinTimestamp.getTime() - siesteHeureDebut.getTime()) / 60000
       )
     );
     const meta: SommeilMeta = {
-      heure_debut: activeSieste.start,
-      heure_fin: end.toISOString(),
+      heure_debut: toTimeInputValue(siesteHeureDebut),
+      heure_fin: siesteHeureFinInput,
+      duree_minutes: dureeMin,
     };
-    const toast = getSiesteEndToast(ctx.prenom, durationMin, ctx.date_naissance);
+    const toastMsg = `😴 Sieste enregistrée — ${formatSiesteDurationShort(dureeMin)} ✅`;
 
-    clearActiveSieste();
-    setActiveSieste(null);
-    addEvent("sieste", serializeNote(meta), durationMin, {
-      createdAt: end.toISOString(),
-      customToast: toast,
+    await addEvent("sieste", serializeNote(meta), dureeMin, {
+      createdAt: siesteHeureDebut.toISOString(),
+      customToast: toastMsg,
+      toastDuration: 2000,
+      toastBackgroundColor: "#4CAF50",
     });
+
+    clearSiesteActive();
+    setSiesteActive(false);
+    setSiesteHeureDebut(null);
+    setActiveModal(null);
   }
 
   function openSommeilNuitStart() {
@@ -868,11 +929,11 @@ export default function Home() {
   }
 
   function handleSommeilTypeSelect(type: SleepFormType) {
-    setActiveModal(null);
     if (type === "sieste") {
-      handleStartSieste();
+      openSommeilSiesteStart();
       return;
     }
+    setActiveModal(null);
     openSommeilNuitStart();
   }
 
@@ -1094,9 +1155,31 @@ export default function Home() {
 
   const siesteChronometer = useMemo(() => {
     void chronoTick;
-    if (!activeSieste) return null;
-    return formatChronometer(activeSieste.start);
-  }, [activeSieste, chronoTick]);
+    if (!siesteActive || !siesteHeureDebut) return null;
+    return formatChronometer(siesteHeureDebut.toISOString());
+  }, [siesteActive, siesteHeureDebut, chronoTick]);
+
+  const siesteEndDurationMin = useMemo(() => {
+    if (!siesteHeureDebut) return 0;
+    const finTs = buildFinTimestampAfterStart(
+      siesteHeureDebut,
+      siesteHeureFinInput
+    );
+    return Math.max(
+      1,
+      Math.floor((finTs.getTime() - siesteHeureDebut.getTime()) / 60000)
+    );
+  }, [siesteHeureDebut, siesteHeureFinInput]);
+
+  const sommeilSexe = babyContext?.sexe ?? demoBaby?.sexe ?? null;
+  const siesteCommenceLabel =
+    sommeilSexe === "garcon"
+      ? "À quelle heure a-t-il commencé ?"
+      : "À quelle heure a-t-elle commencé ?";
+  const siesteReveilLabel =
+    sommeilSexe === "garcon"
+      ? "À quelle heure s'est-il réveillé ?"
+      : "À quelle heure s'est-elle réveillée ?";
 
   const sommeilPrenom = babyContext?.prenom ?? demoBabyName ?? "bébé";
   const feedingProfile = getFeedingProfile();
@@ -1545,7 +1628,7 @@ export default function Home() {
             className="rounded-3xl p-5 text-center shadow-md"
             style={{ backgroundColor: "#EEE8FF" }}
           >
-            {activeSieste ? (
+            {siesteActive ? (
               <>
                 <p
                   style={{
@@ -1561,7 +1644,7 @@ export default function Home() {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleEndSieste();
+                    openSommeilSiesteEnd();
                   }}
                   disabled={saving}
                   style={{
@@ -2570,6 +2653,180 @@ export default function Home() {
         </div>
       </ModalSheet>
 
+      <ModalSheet open={activeModal === "sommeil_sieste_start"} onClose={closeModal} centered>
+        <h2
+          style={{
+            margin: 0,
+            marginBottom: 8,
+            fontSize: 18,
+            fontWeight: 700,
+            color: "#4A3F5C",
+            textAlign: "center",
+          }}
+        >
+          😴 Sieste de {sommeilPrenom}
+        </h2>
+        <p
+          style={{
+            margin: "0 0 20px",
+            fontSize: 14,
+            color: "#8B7FA0",
+            textAlign: "center",
+          }}
+        >
+          {siesteCommenceLabel}
+        </p>
+        <input
+          type="time"
+          value={siesteHeureDebutInput}
+          onChange={(e) => setSiesteHeureDebutInput(e.target.value)}
+          style={{
+            width: "100%",
+            borderRadius: 12,
+            padding: "14px 16px",
+            border: "1.5px solid #F0E8F5",
+            fontSize: 18,
+            textAlign: "center",
+            backgroundColor: "#FDF8F2",
+            boxSizing: "border-box",
+            marginBottom: 24,
+          }}
+        />
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            type="button"
+            onClick={closeModal}
+            disabled={saving}
+            style={{
+              flex: 1,
+              padding: 14,
+              borderRadius: 14,
+              border: "1.5px solid #F0E8F8",
+              backgroundColor: "white",
+              color: "#4A3F5C",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={handleLancerSieste}
+            disabled={saving}
+            style={{
+              flex: 1,
+              padding: 14,
+              borderRadius: 14,
+              border: "none",
+              backgroundColor: "#9B59B6",
+              color: "white",
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: "pointer",
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            Lancer la sieste ▶️
+          </button>
+        </div>
+      </ModalSheet>
+
+      <ModalSheet
+        open={activeModal === "sommeil_sieste_end"}
+        onClose={closeSommeilSiesteEndModal}
+        centered
+      >
+        <h2
+          style={{
+            margin: 0,
+            marginBottom: 8,
+            fontSize: 18,
+            fontWeight: 700,
+            color: "#4A3F5C",
+            textAlign: "center",
+          }}
+        >
+          ☀️ Réveil de {sommeilPrenom}
+        </h2>
+        <p
+          style={{
+            margin: "0 0 20px",
+            fontSize: 14,
+            color: "#8B7FA0",
+            textAlign: "center",
+          }}
+        >
+          {siesteReveilLabel}
+        </p>
+        <input
+          type="time"
+          value={siesteHeureFinInput}
+          onChange={(e) => setSiesteHeureFinInput(e.target.value)}
+          style={{
+            width: "100%",
+            borderRadius: 12,
+            padding: "14px 16px",
+            border: "1.5px solid #F0E8F5",
+            fontSize: 18,
+            textAlign: "center",
+            backgroundColor: "#FDF8F2",
+            boxSizing: "border-box",
+            marginBottom: 12,
+          }}
+        />
+        <p
+          style={{
+            fontSize: 14,
+            color: "#8B7FA0",
+            textAlign: "center",
+            margin: "0 0 24px",
+          }}
+        >
+          Durée : {formatSiesteDurationShort(siesteEndDurationMin)}
+        </p>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            type="button"
+            onClick={closeSommeilSiesteEndModal}
+            disabled={saving}
+            style={{
+              flex: 1,
+              padding: 14,
+              borderRadius: 14,
+              border: "1.5px solid #F0E8F8",
+              backgroundColor: "white",
+              color: "#4A3F5C",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={handleSiesteEnregistrer}
+            disabled={saving}
+            style={{
+              flex: 1,
+              padding: 14,
+              borderRadius: 14,
+              border: "none",
+              backgroundColor: "#E8406A",
+              color: "white",
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: "pointer",
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            Enregistrer ✓
+          </button>
+        </div>
+      </ModalSheet>
+
       <ModalSheet open={activeModal === "sommeil_nuit_start"} onClose={closeModal} centered>
         <h2 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 700, color: "#4A3F5C", textAlign: "center" }}>
           🌙 Bonne nuit pour {sommeilPrenom}
@@ -2678,7 +2935,7 @@ export default function Home() {
               position: "fixed",
               bottom: 96,
               left: "50%",
-              backgroundColor: "#4A3F5C",
+              backgroundColor: toastBackgroundColor,
               color: "white",
               borderRadius: 16,
               padding: "12px 20px",

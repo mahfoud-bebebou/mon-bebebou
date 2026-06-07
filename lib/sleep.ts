@@ -27,13 +27,13 @@ export type NuitNoteData = {
 export type SommeilMeta = {
   heure_debut: string;
   heure_fin: string;
+  duree_minutes?: number;
   nb_reveils?: number;
 };
 
-export type ActiveSieste = {
-  scopeId: string;
-  start: string;
-  estimatedMinutes?: number;
+export type SiesteActiveState = {
+  actif: boolean;
+  heure_debut: string;
 };
 
 export type ModeNuitState = {
@@ -43,7 +43,8 @@ export type ModeNuitState = {
   nb_reveils_prevus?: number;
 };
 
-export const ACTIVE_SIESTE_KEY = "bebebou-active-sieste";
+export const SIESTE_ACTIVE_KEY = "sieste_active";
+const LEGACY_ACTIVE_SIESTE_KEY = "bebebou-active-sieste";
 export const NIGHT_DISMISS_PREFIX = "bebebou-night-dismiss-";
 export const NIGHT_BEDTIME_PREFIX = "bebebou-night-bedtime-";
 
@@ -239,27 +240,56 @@ export function loadNightBedtime(): string | null {
   return localStorage.getItem(NIGHT_BEDTIME_PREFIX + getNightSessionDate());
 }
 
-export function loadActiveSieste(scopeId: string): ActiveSieste | null {
+export function getDefaultSiesteStartTime(): string {
+  const d = new Date(Date.now() - 5 * 60000);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+export function formatSiesteDurationShort(totalMinutes: number): string {
+  const mins = Math.max(0, totalMinutes);
+  const dureeH = Math.floor(mins / 60);
+  const dureeM = mins % 60;
+  if (dureeH === 0) return `${dureeM}min`;
+  if (dureeM === 0) return `${dureeH}h`;
+  return `${dureeH}h${String(dureeM).padStart(2, "0")}`;
+}
+
+export function buildFinTimestampAfterStart(debut: Date, finTime: string): Date {
+  let fin = combineDateAndTime(new Date(debut), finTime);
+  if (fin.getTime() <= debut.getTime()) {
+    fin = new Date(fin.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return fin;
+}
+
+export function loadSiesteActive(): SiesteActiveState | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(ACTIVE_SIESTE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as ActiveSieste;
-    if (parsed.scopeId !== scopeId) return null;
-    return parsed;
+    const raw = localStorage.getItem(SIESTE_ACTIVE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as SiesteActiveState;
+      return parsed.actif ? parsed : null;
+    }
+    const legacy = localStorage.getItem(LEGACY_ACTIVE_SIESTE_KEY);
+    if (!legacy) return null;
+    const old = JSON.parse(legacy) as { start?: string };
+    if (!old.start) return null;
+    return { actif: true, heure_debut: old.start };
   } catch {
     return null;
   }
 }
 
-export function saveActiveSieste(sieste: ActiveSieste): void {
+export function saveSiesteActive(state: SiesteActiveState): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(ACTIVE_SIESTE_KEY, JSON.stringify(sieste));
+  localStorage.setItem(SIESTE_ACTIVE_KEY, JSON.stringify(state));
+  localStorage.removeItem(LEGACY_ACTIVE_SIESTE_KEY);
 }
 
-export function clearActiveSieste(): void {
+export function clearSiesteActive(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(ACTIVE_SIESTE_KEY);
+  localStorage.removeItem(SIESTE_ACTIVE_KEY);
+  localStorage.removeItem(LEGACY_ACTIVE_SIESTE_KEY);
 }
 
 export const MODE_NUIT_KEY = "mode_nuit";
