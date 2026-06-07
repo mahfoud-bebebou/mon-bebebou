@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { ModalSheet } from "@/components/ModalSheet";
 import { isToday } from "@/lib/dashboard-messages";
@@ -215,7 +214,6 @@ function choiceButtonStyle(active: boolean): CSSProperties {
 }
 
 export default function SuiviPage() {
-  const router = useRouter();
   const [events, setEvents] = useState<BebebouEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<SuiviPeriod>("today");
@@ -283,17 +281,7 @@ export default function SuiviPage() {
   }, []);
 
   useEffect(() => {
-    async function checkAuth() {
-      const supabase = createSupabaseClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
+    async function init() {
       try {
         await reloadEvents();
       } catch (err) {
@@ -305,8 +293,8 @@ export default function SuiviPage() {
       }
     }
 
-    checkAuth();
-  }, [reloadEvents, router]);
+    init();
+  }, [reloadEvents]);
 
   const filteredEvents = useMemo(
     () => filterByPeriod(events, period),
@@ -1042,6 +1030,23 @@ export default function SuiviPage() {
         >
           📊 Mon suivi
         </h1>
+
+        {!isAuthenticated && !loading && (
+          <div
+            style={{
+              backgroundColor: "#FDF0F5",
+              border: "1px solid #F0E8F5",
+              borderRadius: 12,
+              padding: "12px 16px",
+              fontSize: 13,
+              color: "#8B7FA0",
+              textAlign: "center",
+              marginBottom: 20,
+            }}
+          >
+            👀 Aperçu de votre journée en mode démo
+          </div>
+        )}
 
         <div
           style={{

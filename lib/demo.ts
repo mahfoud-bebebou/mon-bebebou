@@ -370,6 +370,19 @@ export function isDemoSessionPast24h(): boolean {
   return Date.now() - started.getTime() >= 24 * 60 * 60 * 1000;
 }
 
+/** Heures restantes avant expiration de la session démo (0 si expirée). */
+export function getDemoRemainingHours(): number {
+  const started = getDemoSessionStartedAt();
+  if (!started) return 24;
+  const remainingMs =
+    24 * 60 * 60 * 1000 - (Date.now() - started.getTime());
+  return Math.max(0, Math.ceil(remainingMs / (60 * 60 * 1000)));
+}
+
+export function hasDemoSessionStarted(): boolean {
+  return getDemoSessionStartedAt() !== null;
+}
+
 export function getOrCreateSessionId(): string {
   if (typeof window === "undefined") return "";
 

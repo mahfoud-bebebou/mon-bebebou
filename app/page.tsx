@@ -28,7 +28,11 @@ import {
   getAgeInDays,
   getDemoBaby,
   getOrCreateSessionId,
+  getDemoRemainingHours,
+  hasDemoBaby,
+  hasDemoSessionStarted,
   isDemoSessionPast24h,
+  saveWeightLocalStorage,
   insertDemoEvent,
   markInvite8Shown,
   saveDemoBaby,
@@ -165,22 +169,6 @@ function createSupabaseClient() {
   );
 }
 
-const LEGACY_BABY_STORAGE_KEYS = [
-  "baby_prenom",
-  "baby_sexe",
-  "baby_date_naissance",
-  "baby_poids",
-  "baby_poids_actuel",
-  "baby_parcours",
-  "baby_avatar",
-  "baby_photo",
-] as const;
-
-function clearLegacyBabyLocalStorage() {
-  if (typeof window === "undefined") return;
-  LEGACY_BABY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
-}
-
 function syncLegacyBabyLocalStorage(baby: DemoBaby) {
   if (typeof window === "undefined") return;
   localStorage.setItem("baby_prenom", baby.prenom);
@@ -221,6 +209,11 @@ function loadLegacyBabyFromLocalStorage(sessionId: string): DemoBaby | null {
     poids_actuel: poidsActuel,
     parcours,
   };
+}
+
+function hasCompleteDemoProfile(sessionId: string): boolean {
+  if (hasDemoBaby(sessionId)) return true;
+  return loadLegacyBabyFromLocalStorage(sessionId) !== null;
 }
 
 function getBabyAge(birthdate: string): string {
@@ -334,13 +327,25 @@ export default function Home() {
   const [skeletonRevealed, setSkeletonRevealed] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showSignupModal, setShowSignupModal] = useState(false);
+  const [showBabySetupModal, setShowBabySetupModal] = useState(false);
+  const [babySetupStep, setBabySetupStep] = useState<"prenom" | "details">("prenom");
   const [demoSessionId, setDemoSessionId] = useState("");
+  const [demoBabyPrenom, setDemoBabyPrenom] = useState("");
+  const [demoBabySexe, setDemoBabySexe] = useState<DemoBabySexe | "">("");
+  const [demoBabyDateNaissance, setDemoBabyDateNaissance] = useState("");
+  const [demoBabyPoidsActuel, setDemoBabyPoidsActuel] = useState("");
+  const [demoBabyParcours, setDemoBabyParcours] = useState<DemoParcours | "">("");
   const [demoBaby, setDemoBaby] = useState<DemoBaby | null>(null);
   const [demoBabyName, setDemoBabyName] = useState("");
   const [lastRecordedEventType, setLastRecordedEventType] =
     useState<EventType | null>(null);
+  const [pendingCardType, setPendingCardType] = useState<EventType | null>(null);
   const [demoReady, setDemoReady] = useState(false);
-  const [showDemoExpiryBanner, setShowDemoExpiryBanner] = useState(false);
+  const [demoBannerMode, setDemoBannerMode] = useState<"active" | "expired" | null>(
+    null
+  );
+  const [demoRemainingHours, setDemoRemainingHours] = useState(24);
+  const [babySetupError, setBabySetupError] = useState<string | null>(null);
   const [babyContext, setBabyContext] = useState<BabyMessageContext | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastBackgroundColor, setToastBackgroundColor] = useState("#4A3F5C");
@@ -399,9 +404,55 @@ export default function Home() {
     syncLegacyBabyLocalStorage(baby);
   }
 
+  function applyPartialLegacyBabyFromLocalStorage() {
+    if (typeof window === "undefined") return;
+    const prenom = localStorage.getItem("baby_prenom")?.trim();
+    if (!prenom) return;
+    const sexe = localStorage.getItem("baby_sexe") as DemoBabySexe | null;
+    const date_naissance = localStorage.getItem("baby_date_naissance");
+    const parcours = localStorage.getItem("baby_parcours") as DemoParcours | null;
+    const poidsActuel = parseFloat(
+      (localStorage.getItem("baby_poids_actuel") ?? "").replace(",", ".")
+    );
+    setDemoBabyName(prenom);
+    setBabyInfo(
+      date_naissance
+        ? `${prenom} · ${getBabyAge(date_naissance)}`
+        : prenom
+    );
+    setBabyContext({
+      prenom,
+      sexe: sexe ?? null,
+      date_naissance: date_naissance ?? null,
+      poids_naissance: null,
+      poids_actuel: poidsActuel > 0 ? poidsActuel : null,
+      parcours: parcours ?? null,
+      type_lait: null,
+      intolerances: null,
+    });
+  }
+
+  function prefillBabySetupFromLocalStorage() {
+    if (typeof window === "undefined") return;
+    setDemoBabyPrenom(localStorage.getItem("baby_prenom")?.trim() ?? "");
+    setDemoBabySexe(
+      (localStorage.getItem("baby_sexe") as DemoBabySexe | null) ?? ""
+    );
+    setDemoBabyDateNaissance(localStorage.getItem("baby_date_naissance") ?? "");
+    setDemoBabyPoidsActuel(localStorage.getItem("baby_poids_actuel") ?? "");
+    setDemoBabyParcours(
+      (localStorage.getItem("baby_parcours") as DemoParcours | null) ?? ""
+    );
+  }
+
   function resetVisitorBabyStates() {
     setDemoBaby(null);
     setDemoBabyName("");
+    setDemoBabyPrenom("");
+    setDemoBabySexe("");
+    setDemoBabyDateNaissance("");
+    setDemoBabyPoidsActuel("");
+    setDemoBabyParcours("");
     setBabyContext(null);
     setBabyInfo("votre bébé");
     setAvatarUrl(null);
@@ -460,9 +511,11 @@ export default function Home() {
         saveDemoBaby(legacyBaby);
         applyDemoBabyToUI(legacyBaby);
         loaded = true;
+      } else {
+        applyPartialLegacyBabyFromLocalStorage();
+        loaded = true;
       }
     } else {
-      clearLegacyBabyLocalStorage();
       resetVisitorBabyStates();
     }
 
@@ -886,10 +939,22 @@ export default function Home() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      setShowDemoExpiryBanner(false);
+      setDemoBannerMode(null);
       return;
     }
-    setShowDemoExpiryBanner(isDemoSessionPast24h());
+
+    function refreshDemoBanner() {
+      if (!hasDemoSessionStarted()) {
+        setDemoBannerMode(null);
+        return;
+      }
+      setDemoRemainingHours(getDemoRemainingHours());
+      setDemoBannerMode(isDemoSessionPast24h() ? "expired" : "active");
+    }
+
+    refreshDemoBanner();
+    const interval = setInterval(refreshDemoBanner, 60_000);
+    return () => clearInterval(interval);
   }, [isAuthenticated, demoSessionId, events.length]);
 
   useEffect(() => {
@@ -1267,13 +1332,102 @@ export default function Home() {
     }
   }
 
+  function openBabySetupForCard(type: EventType) {
+    setPendingCardType(type);
+    setBabySetupError(null);
+    prefillBabySetupFromLocalStorage();
+    setBabySetupStep(hasLegacyBabyPrenom() ? "details" : "prenom");
+    setShowBabySetupModal(true);
+  }
+
+  function validateBabySetupPrenom(): string | null {
+    if (!demoBabyPrenom.trim()) return "Le prénom du bébé est obligatoire.";
+    return null;
+  }
+
+  function validateBabySetupDetails(): string | null {
+    if (!demoBabySexe) return "Le sexe est obligatoire.";
+    if (!demoBabyDateNaissance) return "La date de naissance est obligatoire.";
+    const poidsActuel = parseFloat(demoBabyPoidsActuel.replace(",", "."));
+    if (!demoBabyPoidsActuel || !poidsActuel || poidsActuel <= 0) {
+      return "Le poids actuel est obligatoire (ex: 4.5).";
+    }
+    if (!demoBabyParcours) return "Le parcours d'alimentation est obligatoire.";
+    return null;
+  }
+
+  function handleBabySetupPrenomContinue() {
+    const validationError = validateBabySetupPrenom();
+    if (validationError) {
+      setBabySetupError(validationError);
+      return;
+    }
+    if (typeof window !== "undefined") {
+      localStorage.setItem("baby_prenom", demoBabyPrenom.trim());
+    }
+    setBabySetupError(null);
+    setBabySetupStep("details");
+  }
+
+  function handleBabySetupSubmit() {
+    const prenomError = validateBabySetupPrenom();
+    if (prenomError) {
+      setBabySetupError(prenomError);
+      setBabySetupStep("prenom");
+      return;
+    }
+    const validationError = validateBabySetupDetails();
+    if (validationError) {
+      setBabySetupError(validationError);
+      return;
+    }
+
+    const poidsActuel = parseFloat(demoBabyPoidsActuel.replace(",", "."));
+    const sessionId = demoSessionId || getOrCreateSessionId();
+    setDemoSessionId(sessionId);
+
+    const baby: DemoBaby = {
+      session_id: sessionId,
+      prenom: demoBabyPrenom.trim(),
+      sexe: demoBabySexe as DemoBabySexe,
+      date_naissance: demoBabyDateNaissance,
+      poids_naissance: poidsActuel,
+      poids_actuel: poidsActuel,
+      parcours: demoBabyParcours as DemoParcours,
+    };
+
+    computeDemoBabyMetrics(baby);
+    saveDemoBaby(baby);
+    saveWeightLocalStorage(poidsActuel, poidsActuel);
+    applyDemoBabyToUI(baby);
+    setShowBabySetupModal(false);
+    setBabySetupError(null);
+    setError(null);
+
+    if (pendingCardType) {
+      const type = pendingCardType;
+      setPendingCardType(null);
+      proceedWithCard(type);
+    }
+  }
+
   function handleSommeilClick() {
     if (saving) return;
+    const sessionId = demoSessionId || getOrCreateSessionId();
+    if (!isAuthenticated && !hasCompleteDemoProfile(sessionId)) {
+      openBabySetupForCard("sieste");
+      return;
+    }
     openSommeilChoice();
   }
 
   function handleCardClick(type: EventType) {
     if (saving) return;
+    const sessionId = demoSessionId || getOrCreateSessionId();
+    if (!isAuthenticated && !hasCompleteDemoProfile(sessionId)) {
+      openBabySetupForCard(type);
+      return;
+    }
     proceedWithCard(type);
   }
 
@@ -1327,6 +1481,7 @@ export default function Home() {
     setUserEmail(null);
     setActiveModal(null);
     setShowSignupModal(false);
+    setShowBabySetupModal(false);
 
     const sessionId = getOrCreateSessionId();
     const storedBaby = getDemoBaby(sessionId);
@@ -2903,6 +3058,318 @@ export default function Home() {
         </div>
       </ModalSheet>
 
+      {showBabySetupModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0,0,0,0.5)",
+            zIndex: 1000,
+            padding: "20px",
+            overflowY: "auto",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "420px",
+              margin: "auto",
+              backgroundColor: "white",
+              borderRadius: 24,
+              padding: "28px 24px",
+              boxShadow: "0 8px 32px rgba(74,63,92,0.15)",
+            }}
+          >
+            <h3
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#4A3F5C",
+                margin: 0,
+                textAlign: "center",
+              }}
+            >
+              {babySetupStep === "prenom"
+                ? "Comment s'appelle votre bébé ?"
+                : "C'est pour qui ? 🍼"}
+            </h3>
+
+            {babySetupError && (
+              <p
+                style={{
+                  marginTop: 12,
+                  marginBottom: 0,
+                  fontSize: 13,
+                  color: "#C03060",
+                  textAlign: "center",
+                  fontWeight: 500,
+                }}
+              >
+                {babySetupError}
+              </p>
+            )}
+
+            {babySetupStep === "prenom" ? (
+              <>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#4A3F5C",
+                    marginTop: 16,
+                    marginBottom: 6,
+                  }}
+                >
+                  Prénom du bébé
+                </label>
+                <input
+                  type="text"
+                  value={demoBabyPrenom}
+                  onChange={(e) => {
+                    setDemoBabyPrenom(e.target.value);
+                    setBabySetupError(null);
+                  }}
+                  placeholder="Prénom de votre bébé"
+                  autoFocus
+                  style={{
+                    width: "100%",
+                    padding: "14px 16px",
+                    borderRadius: 12,
+                    border: "1.5px solid #F0E8F8",
+                    fontSize: 15,
+                    backgroundColor: "#FDF8F2",
+                    color: "#4A3F5C",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleBabySetupPrenomContinue}
+                  style={{
+                    width: "100%",
+                    marginTop: 20,
+                    padding: "14px",
+                    borderRadius: 14,
+                    backgroundColor: "#E8406A",
+                    color: "white",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Continuer →
+                </button>
+              </>
+            ) : (
+              <>
+                <p
+                  style={{
+                    fontSize: 14,
+                    color: "#8B7FA0",
+                    margin: "8px 0 0",
+                    textAlign: "center",
+                  }}
+                >
+                  Pour {demoBabyPrenom.trim()} — quelques infos pour personnaliser
+                </p>
+
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#4A3F5C",
+                    marginTop: 16,
+                    marginBottom: 6,
+                  }}
+                >
+                  Sexe
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {(
+                    [
+                      ["fille", "👧 Fille"],
+                      ["garcon", "👦 Garçon"],
+                    ] as [DemoBabySexe, string][]
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setDemoBabySexe(value);
+                        setBabySetupError(null);
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border:
+                          demoBabySexe === value
+                            ? "1.5px solid #E8406A"
+                            : "1.5px solid #F0E8F8",
+                        backgroundColor:
+                          demoBabySexe === value ? "#E8406A" : "white",
+                        color: demoBabySexe === value ? "white" : "#4A3F5C",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#4A3F5C",
+                    marginTop: 12,
+                    marginBottom: 6,
+                  }}
+                >
+                  Date de naissance
+                </label>
+                <input
+                  type="date"
+                  value={demoBabyDateNaissance}
+                  onChange={(e) => {
+                    setDemoBabyDateNaissance(e.target.value);
+                    setBabySetupError(null);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "14px 16px",
+                    borderRadius: 12,
+                    border: "1.5px solid #F0E8F8",
+                    fontSize: 15,
+                    backgroundColor: "#FDF8F2",
+                    color: "#4A3F5C",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#4A3F5C",
+                    marginTop: 12,
+                    marginBottom: 6,
+                  }}
+                >
+                  Poids actuel en kg
+                </label>
+                <input
+                  type="number"
+                  value={demoBabyPoidsActuel}
+                  onChange={(e) => {
+                    setDemoBabyPoidsActuel(e.target.value);
+                    setBabySetupError(null);
+                  }}
+                  placeholder="4.5"
+                  step="0.1"
+                  min="0.5"
+                  max="15"
+                  style={{
+                    width: "100%",
+                    padding: "14px 16px",
+                    borderRadius: 12,
+                    border: "1.5px solid #F0E8F8",
+                    fontSize: 15,
+                    backgroundColor: "#FDF8F2",
+                    color: "#4A3F5C",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#4A3F5C",
+                    marginTop: 12,
+                    marginBottom: 6,
+                  }}
+                >
+                  Parcours
+                </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {(
+                    [
+                      ["allaite", "🤱 Allaitement"],
+                      ["artificiel", "🍼 Biberon"],
+                      ["mixte", "🤱🍼 Mixte"],
+                    ] as [DemoParcours, string][]
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setDemoBabyParcours(value);
+                        setBabySetupError(null);
+                      }}
+                      style={{
+                        flex: "1 1 45%",
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border:
+                          demoBabyParcours === value
+                            ? "1.5px solid #E8406A"
+                            : "1.5px solid #F0E8F8",
+                        backgroundColor:
+                          demoBabyParcours === value ? "#E8406A" : "white",
+                        color:
+                          demoBabyParcours === value ? "white" : "#4A3F5C",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleBabySetupSubmit}
+                  style={{
+                    width: "100%",
+                    marginTop: 20,
+                    padding: "14px",
+                    borderRadius: 14,
+                    backgroundColor: "#E8406A",
+                    color: "white",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  C&apos;est parti ! →
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Popup invitation mode démo */}
       {showSignupModal && (
         <div
@@ -3370,28 +3837,22 @@ export default function Home() {
             </button>
       </ModalSheet>
 
-      {!isAuthenticated && showDemoExpiryBanner && (
+      {!isAuthenticated && demoBannerMode === "active" && (
         <div
           style={{
             position: "fixed",
             bottom: 72,
-            left: 16,
-            right: 16,
+            left: 0,
+            right: 0,
             zIndex: 40,
-            maxWidth: 416,
-            margin: "0 auto",
-            backgroundColor: "white",
-            border: "1px solid #F0E8F5",
-            borderRadius: 14,
-            padding: "12px 16px",
-            boxShadow: "0 4px 16px rgba(74,63,92,0.10)",
+            backgroundColor: "#4A3F5C",
+            color: "white",
+            fontSize: 12,
+            padding: "8px 16px",
             textAlign: "center",
-            fontSize: 13,
-            color: "#4A3F5C",
-            lineHeight: 1.5,
           }}
         >
-          Votre session démo expire bientôt —{" "}
+          ⏱ Mode démo — {demoRemainingHours}h restantes ·{" "}
           <button
             type="button"
             onClick={() => router.push("/register")}
@@ -3399,16 +3860,58 @@ export default function Home() {
               background: "none",
               border: "none",
               padding: 0,
-              color: "#E8406A",
+              color: "white",
               fontWeight: 700,
               cursor: "pointer",
               textDecoration: "underline",
-              fontSize: 13,
+              fontSize: 12,
             }}
           >
-            créez un compte
-          </button>{" "}
-          pour ne rien perdre
+            Créer un compte →
+          </button>
+        </div>
+      )}
+
+      {!isAuthenticated && demoBannerMode === "expired" && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 72,
+            left: 0,
+            right: 0,
+            zIndex: 40,
+            backgroundColor: "#FFF0F5",
+            borderTop: "1px solid #F0E8F5",
+            padding: "12px 16px",
+            textAlign: "center",
+          }}
+        >
+          <p
+            style={{
+              margin: "0 0 10px",
+              fontSize: 13,
+              color: "#4A3F5C",
+              fontWeight: 600,
+            }}
+          >
+            Votre démo a expiré — créez un compte pour continuer
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/register")}
+            style={{
+              border: "none",
+              borderRadius: 12,
+              padding: "10px 20px",
+              backgroundColor: "#E8406A",
+              color: "white",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Créer un compte
+          </button>
         </div>
       )}
     </main>

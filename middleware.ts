@@ -46,12 +46,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  if (!user && isProfil) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
   if (
     !user &&
     !isHome &&
     !isLogin &&
     !isRegister &&
-    !isProfil &&
     !isSuivi &&
     !isChat &&
     !isApiChat
