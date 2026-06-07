@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { ModalSheet } from "@/components/ModalSheet";
 import { isToday } from "@/lib/dashboard-messages";
@@ -34,6 +34,13 @@ import {
 import type { BebebouEvent } from "@/lib/supabase";
 
 type SuiviPeriod = "today" | "7days" | "30days";
+type CoucheType = "pipi" | "caca" | "les_deux";
+type PleureCause = "faim" | "couche" | "douleur" | "calin" | "inconnu";
+
+type PleureMeta = {
+  cause: PleureCause;
+  duree_minutes?: number;
+};
 
 const PERIOD_OPTIONS: { id: SuiviPeriod; label: string }[] = [
   { id: "today", label: "Aujourd'hui" },
@@ -49,12 +56,38 @@ const TYPE_LABELS: Record<BebebouEvent["type"], string> = {
   nuit: "Nuit",
 };
 
+const COUCHE_OPTIONS: { id: CoucheType; label: string }[] = [
+  { id: "pipi", label: "💧 Pipi" },
+  { id: "caca", label: "💩 Selle" },
+  { id: "les_deux", label: "💧💩 Les deux" },
+];
+
+const PLEURE_CAUSES: { id: PleureCause; label: string }[] = [
+  { id: "faim", label: "🍼 Faim" },
+  { id: "couche", label: "💩 Couche" },
+  { id: "douleur", label: "😣 Douleur" },
+  { id: "calin", label: "🤗 Câlin" },
+  { id: "inconnu", label: "❓ Inconnu" },
+];
+
 const labelStyle = {
   fontSize: 13,
   fontWeight: 600,
   color: "#4A3F5C",
   marginBottom: 6,
   display: "block" as const,
+};
+
+const timeInputStyle = {
+  width: "100%",
+  borderRadius: 12,
+  padding: "12px 16px",
+  border: "1.5px solid #F0E8F5",
+  fontSize: 15,
+  color: "#4A3F5C",
+  backgroundColor: "#FDF8F2",
+  boxSizing: "border-box" as const,
+  marginBottom: 16,
 };
 
 function createSupabaseClient() {
@@ -97,10 +130,87 @@ function formatEventDate(dateStr: string): string {
   });
 }
 
-function isEditableBiberon(event: BebebouEvent): boolean {
+function eventReferenceDate(event: BebebouEvent): Date {
+  return new Date(event.created_at);
+}
+
+function parseSommeilTimeString(
+  value: string | undefined,
+  fallbackDate: Date
+): string {
+  if (!value) return toTimeInputValue(fallbackDate);
+  if (value.includes("T")) return toTimeInputValue(new Date(value));
+  return value;
+}
+
+function buildEventCreatedAt(event: BebebouEvent, time: string): string {
+  return combineDateAndTime(eventReferenceDate(event), time).toISOString();
+}
+
+function buildSleepEndDateFromTimes(
+  ref: Date,
+  debut: string,
+  fin: string
+): Date {
+  const start = combineDateAndTime(ref, debut);
+  let end = combineDateAndTime(ref, fin);
+  if (end.getTime() <= start.getTime()) {
+    end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return end;
+}
+
+function parseCoucheType(note: string | null): CoucheType {
+  if (note === "caca") return "caca";
+  if (note === "les_deux") return "les_deux";
+  return "pipi";
+}
+
+function pleureCauseFromLegacyNote(note: string | null): PleureCause {
+  if (!note) return "inconnu";
+  const lower = note.toLowerCase();
+  if (lower.includes("faim")) return "faim";
+  if (lower.includes("couche")) return "couche";
+  if (lower.includes("câlin") || lower.includes("calin")) return "calin";
+  if (lower.includes("douleur") || lower.includes("fatigu")) return "douleur";
+  return "inconnu";
+}
+
+function parsePleureFromEvent(event: BebebouEvent): {
+  cause: PleureCause;
+  duree: number;
+} {
+  const meta = parseJsonNote<PleureMeta>(event.note);
+  if (meta?.cause) {
+    return {
+      cause: meta.cause,
+      duree: meta.duree_minutes ?? event.quantity ?? 5,
+    };
+  }
+  return {
+    cause: pleureCauseFromLegacyNote(event.note),
+    duree: event.quantity ?? 5,
+  };
+}
+
+function isTeteeBiberon(event: BebebouEvent): boolean {
   if (event.type !== "biberon") return false;
   const tetee = parseJsonNote<{ type?: string }>(event.note);
-  return tetee?.type !== "tetee";
+  return tetee?.type === "tetee";
+}
+
+function choiceButtonStyle(active: boolean): CSSProperties {
+  return {
+    flex: 1,
+    borderRadius: 12,
+    padding: "10px 8px",
+    fontSize: 13,
+    fontWeight: 600,
+    border: active ? "2px solid #E8406A" : "1.5px solid #F0E8F5",
+    backgroundColor: active ? "#E8406A" : "white",
+    color: active ? "white" : "#4A3F5C",
+    cursor: "pointer",
+  };
 }
 
 export default function SuiviPage() {
@@ -113,6 +223,12 @@ export default function SuiviPage() {
   const [editingEvent, setEditingEvent] = useState<BebebouEvent | null>(null);
   const [editTime, setEditTime] = useState("12:00");
   const [editMl, setEditMl] = useState("120");
+  const [editCoucheType, setEditCoucheType] = useState<CoucheType>("pipi");
+  const [editSleepDebut, setEditSleepDebut] = useState("12:00");
+  const [editSleepFin, setEditSleepFin] = useState("13:00");
+  const [editReveils, setEditReveils] = useState(0);
+  const [editPleureDuration, setEditPleureDuration] = useState(5);
+  const [editPleureCause, setEditPleureCause] = useState<PleureCause>("inconnu");
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [babyId, setBabyId] = useState<string | null>(null);
@@ -213,11 +329,65 @@ export default function SuiviPage() {
     Math.max(10, parseInt(editMl, 10) || 120)
   );
 
+  const editSleepDurationMin = useMemo(() => {
+    if (!editingEvent) return 0;
+    if (editingEvent.type === "nuit") {
+      return calcSleepMinutes(editSleepDebut, editSleepFin);
+    }
+    if (editingEvent.type === "sieste") {
+      return calcDurationBetweenTimes(editSleepDebut, editSleepFin);
+    }
+    return 0;
+  }, [editingEvent, editSleepDebut, editSleepFin]);
+
   function openEditModal(event: BebebouEvent) {
+    const ref = eventReferenceDate(event);
     setEditingEvent(event);
-    setEditTime(toTimeInputValue(new Date(event.created_at)));
-    setEditMl(String(event.quantity ?? 120));
     setModalError(null);
+
+    switch (event.type) {
+      case "biberon": {
+        setEditTime(toTimeInputValue(ref));
+        const qty = event.quantity ?? 120;
+        if (isTeteeBiberon(event)) {
+          setEditPleureDuration(qty);
+        } else {
+          setEditMl(String(qty));
+        }
+        break;
+      }
+      case "couche": {
+        setEditTime(toTimeInputValue(ref));
+        setEditCoucheType(parseCoucheType(event.note));
+        break;
+      }
+      case "sieste":
+      case "nuit": {
+        const meta = parseJsonNote<SommeilMeta>(event.note);
+        setEditSleepDebut(
+          parseSommeilTimeString(meta?.heure_debut, ref)
+        );
+        setEditSleepFin(
+          parseSommeilTimeString(
+            meta?.heure_fin,
+            buildSleepEndDateFromTimes(
+              ref,
+              parseSommeilTimeString(meta?.heure_debut, ref),
+              parseSommeilTimeString(meta?.heure_fin, ref)
+            )
+          )
+        );
+        setEditReveils(meta?.nb_reveils ?? 0);
+        break;
+      }
+      case "pleure": {
+        const { cause, duree } = parsePleureFromEvent(event);
+        setEditTime(toTimeInputValue(ref));
+        setEditPleureCause(cause);
+        setEditPleureDuration(duree);
+        break;
+      }
+    }
   }
 
   function closeEditModal() {
@@ -230,6 +400,93 @@ export default function SuiviPage() {
     setEditMl(String(Math.min(350, Math.max(10, editMlValue + delta))));
   }
 
+  function adjustPleureDuration(delta: number) {
+    setEditPleureDuration((d) => Math.min(180, Math.max(1, d + delta)));
+  }
+
+  function buildEditPayload(event: BebebouEvent): {
+    quantity: number | null;
+    created_at: string;
+    note: string | null;
+  } {
+    const ref = eventReferenceDate(event);
+
+    switch (event.type) {
+      case "biberon": {
+        if (isTeteeBiberon(event)) {
+          const tetee = parseJsonNote<{
+            type?: string;
+            sein?: string;
+            minutes?: number;
+          }>(event.note);
+          const updatedNote = JSON.stringify({
+            type: "tetee",
+            sein: tetee?.sein ?? "gauche",
+            minutes: editPleureDuration,
+          });
+          return {
+            quantity: editPleureDuration,
+            created_at: buildEventCreatedAt(event, editTime),
+            note: updatedNote,
+          };
+        }
+        return {
+          quantity: editMlValue,
+          created_at: buildEventCreatedAt(event, editTime),
+          note: event.note,
+        };
+      }
+      case "couche":
+        return {
+          quantity: null,
+          created_at: buildEventCreatedAt(event, editTime),
+          note: editCoucheType,
+        };
+      case "sieste": {
+        const durationMin = Math.max(1, editSleepDurationMin);
+        const meta: SommeilMeta = {
+          heure_debut: editSleepDebut,
+          heure_fin: editSleepFin,
+          duree_minutes: durationMin,
+        };
+        return {
+          quantity: durationMin,
+          created_at: combineDateAndTime(ref, editSleepDebut).toISOString(),
+          note: serializeNote(meta),
+        };
+      }
+      case "nuit": {
+        const durationMin = Math.max(1, editSleepDurationMin);
+        const meta: SommeilMeta = {
+          heure_debut: editSleepDebut,
+          heure_fin: editSleepFin,
+          nb_reveils: editReveils,
+          duree_minutes: durationMin,
+        };
+        return {
+          quantity: durationMin,
+          created_at: buildSleepEndDateFromTimes(
+            ref,
+            editSleepDebut,
+            editSleepFin
+          ).toISOString(),
+          note: serializeNote(meta),
+        };
+      }
+      case "pleure": {
+        const meta: PleureMeta = {
+          cause: editPleureCause,
+          duree_minutes: editPleureDuration,
+        };
+        return {
+          quantity: editPleureDuration,
+          created_at: buildEventCreatedAt(event, editTime),
+          note: serializeNote(meta),
+        };
+      }
+    }
+  }
+
   async function handleSaveEdit() {
     if (!editingEvent) return;
 
@@ -237,15 +494,7 @@ export default function SuiviPage() {
     setModalError(null);
 
     try {
-      const createdAt = combineDateAndTime(
-        new Date(editingEvent.created_at),
-        editTime
-      ).toISOString();
-
-      const payload = {
-        quantity: editMlValue,
-        created_at: createdAt,
-      };
+      const payload = buildEditPayload(editingEvent);
 
       if (isAuthenticated) {
         await updateEvent(editingEvent.id, payload);
@@ -258,7 +507,7 @@ export default function SuiviPage() {
       setEditingEvent(null);
     } catch (err) {
       console.error(err);
-      setModalError("Impossible de modifier ce biberon");
+      setModalError("Impossible de modifier cet enregistrement");
     } finally {
       setSaving(false);
     }
@@ -266,7 +515,7 @@ export default function SuiviPage() {
 
   async function handleDeleteEdit() {
     if (!editingEvent) return;
-    if (!window.confirm("Supprimer ce biberon ?")) return;
+    if (!window.confirm("Supprimer cet enregistrement ?")) return;
 
     setSaving(true);
     setModalError(null);
@@ -283,7 +532,7 @@ export default function SuiviPage() {
       setEditingEvent(null);
     } catch (err) {
       console.error(err);
-      setModalError("Impossible de supprimer ce biberon");
+      setModalError("Impossible de supprimer cet enregistrement");
     } finally {
       setSaving(false);
     }
@@ -305,13 +554,7 @@ export default function SuiviPage() {
   }
 
   function buildSleepEndDate(debut: string, fin: string): Date {
-    const ref = new Date();
-    const start = combineDateAndTime(ref, debut);
-    let end = combineDateAndTime(ref, fin);
-    if (end.getTime() <= start.getTime()) {
-      end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
-    }
-    return end;
+    return buildSleepEndDateFromTimes(new Date(), debut, fin);
   }
 
   async function handleSaveSleep() {
@@ -359,11 +602,340 @@ export default function SuiviPage() {
     }
   }
 
+  function renderEditFields() {
+    if (!editingEvent) return null;
+
+    switch (editingEvent.type) {
+      case "biberon":
+        return (
+          <>
+            <label style={labelStyle}>
+              {isTeteeBiberon(editingEvent)
+                ? "Heure de la tétée"
+                : "Heure de prise"}
+            </label>
+            <input
+              type="time"
+              value={editTime}
+              onChange={(e) => setEditTime(e.target.value)}
+              style={timeInputStyle}
+            />
+            <label style={labelStyle}>
+              {isTeteeBiberon(editingEvent)
+                ? "Durée (min)"
+                : "Quantité (ml)"}
+            </label>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 16,
+                marginBottom: 24,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  isTeteeBiberon(editingEvent)
+                    ? adjustPleureDuration(-5)
+                    : adjustEditMl(-10)
+                }
+                disabled={saving}
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 14,
+                  border: "1.5px solid #F0E8F8",
+                  backgroundColor: "#FDF8F2",
+                  fontSize: 24,
+                  fontWeight: 600,
+                  color: "#4A3F5C",
+                  cursor: "pointer",
+                }}
+              >
+                −
+              </button>
+              <div
+                style={{
+                  minWidth: 120,
+                  padding: "14px 20px",
+                  borderRadius: 14,
+                  border: "1px solid #E8E0F0",
+                  textAlign: "center",
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: "#4A3F5C",
+                  backgroundColor: "#FFFFFF",
+                }}
+              >
+                {isTeteeBiberon(editingEvent)
+                  ? `${editPleureDuration} min`
+                  : `${editMlValue} ml`}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  isTeteeBiberon(editingEvent)
+                    ? adjustPleureDuration(5)
+                    : adjustEditMl(10)
+                }
+                disabled={saving}
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 14,
+                  border: "1.5px solid #F0E8F8",
+                  backgroundColor: "#FDF8F2",
+                  fontSize: 24,
+                  fontWeight: 600,
+                  color: "#4A3F5C",
+                  cursor: "pointer",
+                }}
+              >
+                +
+              </button>
+            </div>
+          </>
+        );
+
+      case "couche":
+        return (
+          <>
+            <label style={labelStyle}>Heure</label>
+            <input
+              type="time"
+              value={editTime}
+              onChange={(e) => setEditTime(e.target.value)}
+              style={timeInputStyle}
+            />
+            <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 8px" }}>
+              Type
+            </p>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginBottom: 24,
+              }}
+            >
+              {COUCHE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setEditCoucheType(opt.id)}
+                  style={{
+                    ...choiceButtonStyle(editCoucheType === opt.id),
+                    flex: "1 1 30%",
+                    minWidth: 90,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </>
+        );
+
+      case "sieste":
+        return (
+          <>
+            <label style={labelStyle}>Heure début</label>
+            <input
+              type="time"
+              value={editSleepDebut}
+              onChange={(e) => setEditSleepDebut(e.target.value)}
+              style={timeInputStyle}
+            />
+            <label style={labelStyle}>Heure fin</label>
+            <input
+              type="time"
+              value={editSleepFin}
+              onChange={(e) => setEditSleepFin(e.target.value)}
+              style={timeInputStyle}
+            />
+            <p
+              style={{
+                fontSize: 14,
+                color: "#8B7FA0",
+                textAlign: "center",
+                margin: "0 0 24px",
+              }}
+            >
+              Durée : {formatDurationCompact(editSleepDurationMin)}
+            </p>
+          </>
+        );
+
+      case "nuit":
+        return (
+          <>
+            <label style={labelStyle}>Heure coucher</label>
+            <input
+              type="time"
+              value={editSleepDebut}
+              onChange={(e) => setEditSleepDebut(e.target.value)}
+              style={timeInputStyle}
+            />
+            <label style={labelStyle}>Heure lever</label>
+            <input
+              type="time"
+              value={editSleepFin}
+              onChange={(e) => setEditSleepFin(e.target.value)}
+              style={timeInputStyle}
+            />
+            <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 8px" }}>
+              Nombre de réveils
+            </p>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginBottom: 16,
+              }}
+            >
+              {SOMMEIL_REVEIL_COUNTS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setEditReveils(n)}
+                  style={{
+                    ...choiceButtonStyle(editReveils === n),
+                    flex: "1 1 14%",
+                    minWidth: 44,
+                  }}
+                >
+                  {n === 5 ? "5+" : n}
+                </button>
+              ))}
+            </div>
+            <p
+              style={{
+                fontSize: 14,
+                color: "#8B7FA0",
+                textAlign: "center",
+                margin: "0 0 24px",
+              }}
+            >
+              Durée totale : {formatDurationCompact(editSleepDurationMin)}
+            </p>
+          </>
+        );
+
+      case "pleure":
+        return (
+          <>
+            <label style={labelStyle}>Heure début</label>
+            <input
+              type="time"
+              value={editTime}
+              onChange={(e) => setEditTime(e.target.value)}
+              style={timeInputStyle}
+            />
+            <label style={labelStyle}>Durée (minutes)</label>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 16,
+                marginBottom: 20,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => adjustPleureDuration(-5)}
+                disabled={editPleureDuration <= 1 || saving}
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 14,
+                  border: "1.5px solid #F0E8F8",
+                  backgroundColor: "#FDF8F2",
+                  fontSize: 24,
+                  fontWeight: 600,
+                  color: "#4A3F5C",
+                  cursor: editPleureDuration <= 1 ? "not-allowed" : "pointer",
+                  opacity: editPleureDuration <= 1 ? 0.4 : 1,
+                }}
+              >
+                −
+              </button>
+              <div
+                style={{
+                  minWidth: 120,
+                  padding: "14px 20px",
+                  borderRadius: 14,
+                  border: "1px solid #E8E0F0",
+                  textAlign: "center",
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: "#4A3F5C",
+                  backgroundColor: "#FFFFFF",
+                }}
+              >
+                {editPleureDuration} min
+              </div>
+              <button
+                type="button"
+                onClick={() => adjustPleureDuration(5)}
+                disabled={editPleureDuration >= 180 || saving}
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 14,
+                  border: "1.5px solid #F0E8F8",
+                  backgroundColor: "#FDF8F2",
+                  fontSize: 24,
+                  fontWeight: 600,
+                  color: "#4A3F5C",
+                  cursor: editPleureDuration >= 180 ? "not-allowed" : "pointer",
+                  opacity: editPleureDuration >= 180 ? 0.4 : 1,
+                }}
+              >
+                +
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 8px" }}>
+              Cause
+            </p>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginBottom: 24,
+              }}
+            >
+              {PLEURE_CAUSES.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setEditPleureCause(opt.id)}
+                  style={{
+                    ...choiceButtonStyle(editPleureCause === opt.id),
+                    flex: "1 1 45%",
+                    minWidth: 120,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </>
+        );
+
+      default:
+        return null;
+    }
+  }
+
   function renderEventRow(
     event: BebebouEvent,
     index: number,
-    total: number,
-    showEdit?: boolean
+    total: number
   ) {
     return (
       <li
@@ -412,28 +984,30 @@ export default function SuiviPage() {
         >
           {formatEventDate(event.created_at)}
         </span>
-        {showEdit && isEditableBiberon(event) && (
-          <button
-            type="button"
-            onClick={() => openEditModal(event)}
-            aria-label="Modifier ce biberon"
-            style={{
-              backgroundColor: "transparent",
-              border: "none",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#8B7FA0",
-              flexShrink: 0,
-              padding: 0,
-              lineHeight: 1,
-            }}
-          >
-            ✏️
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => openEditModal(event)}
+          aria-label={`Modifier ${TYPE_LABELS[event.type]}`}
+          style={{
+            backgroundColor: "transparent",
+            border: "none",
+            fontSize: 18,
+            cursor: "pointer",
+            color: "#8B7FA0",
+            flexShrink: 0,
+            padding: 0,
+            lineHeight: 1,
+          }}
+        >
+          ✏️
+        </button>
       </li>
     );
   }
+
+  const editModalTitle = editingEvent
+    ? `✏️ Modifier ${getEventEmoji(editingEvent.type)} ${TYPE_LABELS[editingEvent.type]}`
+    : "";
 
   return (
     <main
@@ -586,14 +1160,19 @@ export default function SuiviPage() {
           ) : (
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {otherEvents.map((event, index) =>
-                renderEventRow(event, index, otherEvents.length, true)
+                renderEventRow(event, index, otherEvents.length)
               )}
             </ul>
           )}
         </section>
       </div>
 
-      <ModalSheet open={Boolean(editingEvent)} onClose={closeEditModal} centered>
+      <ModalSheet
+        open={Boolean(editingEvent)}
+        onClose={closeEditModal}
+        centered
+        sheetStyle={{ padding: 24 }}
+      >
         <h2
           style={{
             margin: "0 0 20px",
@@ -603,91 +1182,10 @@ export default function SuiviPage() {
             textAlign: "center",
           }}
         >
-          ✏️ Modifier ce biberon
+          {editModalTitle}
         </h2>
 
-        <label style={labelStyle}>Heure</label>
-        <input
-          type="time"
-          value={editTime}
-          onChange={(e) => setEditTime(e.target.value)}
-          style={{
-            width: "100%",
-            borderRadius: 12,
-            padding: "12px 16px",
-            border: "1.5px solid #F0E8F5",
-            fontSize: 15,
-            color: "#4A3F5C",
-            backgroundColor: "#FDF8F2",
-            boxSizing: "border-box",
-            marginBottom: 20,
-          }}
-        />
-
-        <label style={labelStyle}>Quantité (ml)</label>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 16,
-            marginBottom: 24,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => adjustEditMl(-10)}
-            disabled={editMlValue <= 10 || saving}
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 14,
-              border: "1.5px solid #F0E8F8",
-              backgroundColor: "#FDF8F2",
-              fontSize: 24,
-              fontWeight: 600,
-              color: "#4A3F5C",
-              cursor: editMlValue <= 10 ? "not-allowed" : "pointer",
-              opacity: editMlValue <= 10 ? 0.4 : 1,
-            }}
-          >
-            −
-          </button>
-          <div
-            style={{
-              minWidth: 120,
-              padding: "14px 20px",
-              borderRadius: 14,
-              border: "1px solid #E8E0F0",
-              textAlign: "center",
-              fontSize: 20,
-              fontWeight: 700,
-              color: "#4A3F5C",
-              backgroundColor: "#FFFFFF",
-            }}
-          >
-            {editMlValue} ml
-          </div>
-          <button
-            type="button"
-            onClick={() => adjustEditMl(10)}
-            disabled={editMlValue >= 350 || saving}
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 14,
-              border: "1.5px solid #F0E8F8",
-              backgroundColor: "#FDF8F2",
-              fontSize: 24,
-              fontWeight: 600,
-              color: "#4A3F5C",
-              cursor: editMlValue >= 350 ? "not-allowed" : "pointer",
-              opacity: editMlValue >= 350 ? 0.4 : 1,
-            }}
-          >
-            +
-          </button>
-        </div>
+        {renderEditFields()}
 
         {modalError && (
           <p
@@ -808,17 +1306,7 @@ export default function SuiviPage() {
           type="time"
           value={sleepDebut}
           onChange={(e) => setSleepDebut(e.target.value)}
-          style={{
-            width: "100%",
-            borderRadius: 12,
-            padding: "12px 16px",
-            border: "1.5px solid #F0E8F5",
-            fontSize: 15,
-            color: "#4A3F5C",
-            backgroundColor: "#FDF8F2",
-            boxSizing: "border-box",
-            marginBottom: 16,
-          }}
+          style={timeInputStyle}
         />
 
         <label style={labelStyle}>Heure fin</label>
@@ -827,14 +1315,7 @@ export default function SuiviPage() {
           value={sleepFin}
           onChange={(e) => setSleepFin(e.target.value)}
           style={{
-            width: "100%",
-            borderRadius: 12,
-            padding: "12px 16px",
-            border: "1.5px solid #F0E8F5",
-            fontSize: 15,
-            color: "#4A3F5C",
-            backgroundColor: "#FDF8F2",
-            boxSizing: "border-box",
+            ...timeInputStyle,
             marginBottom: sleepType === "nuit" ? 16 : 20,
           }}
         />
@@ -858,19 +1339,9 @@ export default function SuiviPage() {
                   type="button"
                   onClick={() => setSleepReveils(n)}
                   style={{
+                    ...choiceButtonStyle(sleepReveils === n),
                     flex: "1 1 14%",
                     minWidth: 44,
-                    borderRadius: 12,
-                    padding: "10px 6px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    border:
-                      sleepReveils === n
-                        ? "2px solid #E8406A"
-                        : "1.5px solid #F0E8F5",
-                    backgroundColor: sleepReveils === n ? "#E8406A" : "white",
-                    color: sleepReveils === n ? "white" : "#4A3F5C",
-                    cursor: "pointer",
                   }}
                 >
                   {n === 5 ? "5+" : n}

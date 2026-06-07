@@ -114,10 +114,14 @@ export function getEventLabel(event: BebebouEvent): string {
       }
       return event.quantity ? `Biberon ${event.quantity}ml` : "Biberon";
     }
-    case "couche":
+    case "couche": {
+      if (event.note === "caca") return "Changement de couche — Selle";
+      if (event.note === "les_deux") return "Changement de couche — Pipi + Selle";
+      if (event.note === "pipi") return "Changement de couche — Pipi";
       return event.note
         ? `Changement de couche — ${event.note}`
         : "Changement de couche";
+    }
     case "sieste": {
       if (event.quantity) {
         return getTimelineEventLabel(event) || `Sieste · ${event.quantity}min`;
@@ -130,8 +134,26 @@ export function getEventLabel(event: BebebouEvent): string {
     }
     case "nuit":
       return getTimelineEventLabel(event) || "Nuit";
-    case "pleure":
+    case "pleure": {
+      const meta = parseJsonNote<{ cause?: string; duree_minutes?: number }>(
+        event.note
+      );
+      if (meta?.cause) {
+        const causeLabels: Record<string, string> = {
+          faim: "Faim",
+          couche: "Couche",
+          douleur: "Douleur",
+          calin: "Câlin",
+          inconnu: "Inconnu",
+        };
+        const label = causeLabels[meta.cause] ?? meta.cause;
+        const duree = meta.duree_minutes ?? event.quantity;
+        return duree
+          ? `Pleurs · ${label} · ${duree}min`
+          : `Pleurs · ${label}`;
+      }
       return event.note ?? "Bébé pleure";
+    }
   }
 }
 
