@@ -298,37 +298,8 @@ export default function ProfilPage() {
   }, [])
 
   useEffect(() => {
-    async function load() {
+    async function loadProfile(user: { id: string; email?: string | null }) {
       const supabaseClient = createSupabaseClient()
-      const {
-        data: { user },
-      } = await supabaseClient.auth.getUser()
-
-      if (!user) {
-        setIsAuthenticated(false)
-        const sessionId = getOrCreateSessionId()
-        setDemoSessionId(sessionId)
-        const saved = loadBabyAvatar()
-        if (saved) setAvatarUrl(saved)
-        const demoBaby = getDemoBaby(sessionId)
-        if (demoBaby) {
-          setPrenom(demoBaby.prenom)
-          setSexe(demoBaby.sexe)
-          setDateNaissance(demoBaby.date_naissance)
-          setPoidsNaissance(String(demoBaby.poids_naissance))
-          setPoidsActuel(String(demoBaby.poids_actuel))
-          setParcours(demoBaby.parcours)
-          setTypeLait((demoBaby.type_lait as TypeLait) ?? '')
-          setIntolerances(parseIntolerances(demoBaby.intolerances))
-        } else {
-          const pn = loadPoidsNaissance()
-          const pa = loadPoidsActuel()
-          if (pn) setPoidsNaissance(String(pn))
-          if (pa) setPoidsActuel(String(pa))
-        }
-        setLoading(false)
-        return
-      }
 
       setIsAuthenticated(true)
       setUserId(user.id)
@@ -446,8 +417,22 @@ export default function ProfilPage() {
       setLoading(false)
     }
 
-    load()
-  }, [])
+    async function checkAuth() {
+      const supabaseClient = createSupabaseClient()
+      const {
+        data: { user },
+      } = await supabaseClient.auth.getUser()
+
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      await loadProfile(user)
+    }
+
+    checkAuth()
+  }, [router])
 
   useEffect(() => {
     if (!isAuthenticated || !familyId || !userId) return

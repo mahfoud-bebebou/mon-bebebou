@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { ModalSheet } from "@/components/ModalSheet";
 import { isToday } from "@/lib/dashboard-messages";
@@ -214,6 +215,7 @@ function choiceButtonStyle(active: boolean): CSSProperties {
 }
 
 export default function SuiviPage() {
+  const router = useRouter();
   const [events, setEvents] = useState<BebebouEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<SuiviPeriod>("today");
@@ -281,7 +283,17 @@ export default function SuiviPage() {
   }, []);
 
   useEffect(() => {
-    async function load() {
+    async function checkAuth() {
+      const supabase = createSupabaseClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
       try {
         await reloadEvents();
       } catch (err) {
@@ -293,8 +305,8 @@ export default function SuiviPage() {
       }
     }
 
-    load();
-  }, [reloadEvents]);
+    checkAuth();
+  }, [reloadEvents, router]);
 
   const filteredEvents = useMemo(
     () => filterByPeriod(events, period),

@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Send } from "lucide-react";
+import { createBrowserClient } from "@supabase/ssr";
 
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
 };
+
+const PUBLIC_SYSTEM_PROMPT =
+  "Tu es l'assistant parental de Mon Bebebou. Tu réponds toujours en français, tu es bienveillant et rassurant. Tu ne remplaces pas un médecin. Réponds en max 3 paragraphes courts. Ne fais référence à aucun prénom de bébé ni à des données personnelles — l'utilisateur n'est pas connecté.";
 
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
@@ -18,10 +22,85 @@ const INITIAL_MESSAGES: ChatMessage[] = [
   },
 ];
 
+function createSupabaseClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
+function buildPersonalizedSystemPrompt(baby: {
+  prenom?: string | null;
+  date_naissance?: string | null;
+  sexe?: string | null;
+  parcours?: string | null;
+  poids_actuel?: number | null;
+  poids_naissance?: number | null;
+}) {
+  const parts = [
+    "Tu es l'assistant parental de Mon Bebebou. Tu réponds toujours en français, tu es bienveillant et rassurant. Tu ne remplaces pas un médecin. Réponds en max 3 paragraphes courts.",
+    "Contexte du bébé de la famille connectée :",
+  ];
+
+  if (baby.prenom) parts.push(`- Prénom : ${baby.prenom}`);
+  if (baby.date_naissance) parts.push(`- Date de naissance : ${baby.date_naissance}`);
+  if (baby.sexe) parts.push(`- Sexe : ${baby.sexe}`);
+  if (baby.parcours) parts.push(`- Parcours alimentaire : ${baby.parcours}`);
+  if (baby.poids_actuel != null) parts.push(`- Poids actuel : ${baby.poids_actuel} kg`);
+  if (baby.poids_naissance != null) {
+    parts.push(`- Poids de naissance : ${baby.poids_naissance} kg`);
+  }
+
+  return parts.join("\n");
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [systemPrompt, setSystemPrompt] = useState(PUBLIC_SYSTEM_PROMPT);
+
+  useEffect(() => {
+    async function checkAuth() {
+      const supabase = createSupabaseClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setSystemPrompt(PUBLIC_SYSTEM_PROMPT);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("family_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!profile?.family_id) {
+        setSystemPrompt(PUBLIC_SYSTEM_PROMPT);
+        return;
+      }
+
+      const { data: baby } = await supabase
+        .from("babies")
+        .select(
+          "prenom, date_naissance, sexe, parcours, poids_actuel, poids_naissance"
+        )
+        .eq("family_id", profile.family_id)
+        .maybeSingle();
+
+      if (!baby) {
+        setSystemPrompt(PUBLIC_SYSTEM_PROMPT);
+        return;
+      }
+
+      setSystemPrompt(buildPersonalizedSystemPrompt(baby));
+    }
+
+    checkAuth();
+  }, []);
 
   async function handleSend() {
     const userMessage = input.trim();
@@ -43,8 +122,7 @@ export default function ChatPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           messages: [{ role: "user", content: userMessage }],
-          systemPrompt:
-            "Tu es l'assistant parental de Mon Bebebou. Tu réponds toujours en français, tu es bienveillant et rassurant. Tu ne remplaces pas un médecin. Réponds en max 3 paragraphes courts.",
+          systemPrompt,
         }),
       });
       const data = await response.json();
