@@ -30,7 +30,6 @@ import {
   type TypeLait,
 } from '@/lib/couche'
 import { computeProfileStats, type ProfileStats } from '@/lib/profile-stats'
-import { supabase } from '@/lib/supabase'
 
 function createSupabaseClient() {
   return createBrowserClient(
@@ -82,6 +81,12 @@ function multiSelectBtnStyle(selected: boolean) {
     fontWeight: 600,
     cursor: 'pointer' as const,
   }
+}
+
+function parseIntolerances(value: unknown): Intolerance[] {
+  if (!value) return []
+  if (Array.isArray(value)) return value as Intolerance[]
+  return []
 }
 
 function formatTypeLaitDisplay(typeLait: TypeLait | '') {
@@ -293,7 +298,7 @@ export default function ProfilPage() {
           setPoidsActuel(String(demoBaby.poids_actuel))
           setParcours(demoBaby.parcours)
           setTypeLait((demoBaby.type_lait as TypeLait) ?? '')
-          setIntolerances((demoBaby.intolerances as Intolerance[]) ?? [])
+          setIntolerances(parseIntolerances(demoBaby.intolerances))
         } else {
           const pn = loadPoidsNaissance()
           const pa = loadPoidsActuel()
@@ -314,11 +319,26 @@ export default function ProfilPage() {
         if (authAvatar) setAvatarUrl(authAvatar)
       }
 
-      const { data: baby } = await supabase
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('family_id')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (!profile?.family_id) {
+        setLoading(false)
+        return
+      }
+
+      const { data: baby, error: babyError } = await supabaseClient
         .from('babies')
-        .select('id, prenom, date_naissance, sexe, poids_naissance, poids_actuel, parcours, type_lait, intolerances')
-        .limit(1)
+        .select('*, type_lait, intolerances')
+        .eq('family_id', profile.family_id)
         .single()
+
+      if (babyError) {
+        console.error('[Profil] baby load error:', babyError)
+      }
 
       if (baby) {
         const record = baby as BabyRecord
@@ -339,7 +359,7 @@ export default function ProfilPage() {
         )
         setParcours((record.parcours as DemoParcours) ?? '')
         setTypeLait((record.type_lait as TypeLait) ?? '')
-        setIntolerances((record.intolerances as Intolerance[]) ?? [])
+        setIntolerances(parseIntolerances(record.intolerances))
 
         const events = await fetchEventsFromDb(user.id)
         setStats(
@@ -428,7 +448,7 @@ export default function ProfilPage() {
           poids_actuel: poidsActuelNum,
           parcours: parcours as DemoParcours,
           type_lait: typeLait || null,
-          intolerances: intolerances.length ? intolerances : null,
+          intolerances,
         }
         saveDemoBaby(baby)
         setIsEditing(false)
@@ -438,7 +458,8 @@ export default function ProfilPage() {
 
       if (!babyId) throw new Error('Bébé introuvable')
 
-      const { error } = await supabase
+      const supabaseClient = createSupabaseClient()
+      const { error } = await supabaseClient
         .from('babies')
         .update({
           prenom: prenom.trim(),
@@ -448,7 +469,7 @@ export default function ProfilPage() {
           poids_actuel: poidsActuelNum,
           parcours,
           type_lait: typeLait || null,
-          intolerances: intolerances.length ? intolerances : [],
+          intolerances,
         })
         .eq('id', babyId)
 
