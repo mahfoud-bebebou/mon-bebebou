@@ -3645,7 +3645,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      <ModalSheet open={activeModal === "pleure"} onClose={closeModal}>
+      <ModalSheet open={activeModal === "pleure"} onClose={closeModal} centered>
             <h3 className="text-lg font-bold text-[#4A3F5C]">😢 Bébé pleure</h3>
             <p className="mt-1 text-sm text-[#8B7FA0]">
               Quelle pourrait être la cause ?
