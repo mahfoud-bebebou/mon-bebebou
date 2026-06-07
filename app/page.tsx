@@ -198,6 +198,33 @@ function hasLegacyBabyPrenom(): boolean {
   return Boolean(localStorage.getItem("baby_prenom")?.trim());
 }
 
+function loadLegacyBabyFromLocalStorage(sessionId: string): DemoBaby | null {
+  if (typeof window === "undefined") return null;
+  const prenom = localStorage.getItem("baby_prenom")?.trim();
+  if (!prenom) return null;
+  const sexe = localStorage.getItem("baby_sexe") as DemoBabySexe | null;
+  const date_naissance = localStorage.getItem("baby_date_naissance");
+  const parcours = localStorage.getItem("baby_parcours") as DemoParcours | null;
+  if (!sexe || !date_naissance || !parcours) return null;
+  const poidsActuel = parseFloat(
+    (localStorage.getItem("baby_poids_actuel") ?? "").replace(",", ".")
+  );
+  if (!poidsActuel || poidsActuel <= 0) return null;
+  const poidsNaissance = parseFloat(
+    (localStorage.getItem("baby_poids") ?? "").replace(",", ".")
+  );
+  return {
+    session_id: sessionId,
+    prenom,
+    sexe,
+    date_naissance,
+    poids_naissance:
+      poidsNaissance && poidsNaissance > 0 ? poidsNaissance : poidsActuel,
+    poids_actuel: poidsActuel,
+    parcours,
+  };
+}
+
 function getBabyAge(birthdate: string): string {
   const birth = new Date(birthdate);
   const now = new Date();
@@ -441,9 +468,6 @@ export default function Home() {
   }
 
   async function loadAnonymousDemoData() {
-    clearLegacyBabyLocalStorage();
-    resetVisitorBabyStates();
-
     setIsAuthenticated(false);
     setBaby(null);
     setUserEmail(null);
@@ -452,9 +476,29 @@ export default function Home() {
     const sessionId = getOrCreateSessionId();
     setDemoSessionId(sessionId);
 
-    const storedBaby = getDemoBaby(sessionId);
-    if (storedBaby) {
-      applyDemoBabyToUI(storedBaby);
+    let loaded = false;
+
+    if (hasLegacyBabyPrenom()) {
+      const legacyBaby = loadLegacyBabyFromLocalStorage(sessionId);
+      if (legacyBaby) {
+        saveDemoBaby(legacyBaby);
+        applyDemoBabyToUI(legacyBaby);
+        loaded = true;
+      }
+    } else {
+      clearLegacyBabyLocalStorage();
+      resetVisitorBabyStates();
+    }
+
+    if (!loaded) {
+      const storedBaby = getDemoBaby(sessionId);
+      if (storedBaby) {
+        applyDemoBabyToUI(storedBaby);
+        loaded = true;
+      }
+    }
+
+    if (loaded) {
       const saved = loadBabyAvatar();
       if (saved) setAvatarUrl(saved);
     }
@@ -618,11 +662,7 @@ export default function Home() {
     if (!demoBabyPrenom.trim()) return "Le prénom du bébé est obligatoire.";
     if (!demoBabySexe) return "Le sexe est obligatoire.";
     if (!demoBabyDateNaissance) return "La date de naissance est obligatoire.";
-    const poidsNaissance = parseFloat(demoBabyPoidsNaissance.replace(",", "."));
     const poidsActuel = parseFloat(demoBabyPoidsActuel.replace(",", "."));
-    if (!demoBabyPoidsNaissance || !poidsNaissance || poidsNaissance <= 0) {
-      return "Le poids de naissance est obligatoire (ex: 3.2).";
-    }
     if (!demoBabyPoidsActuel || !poidsActuel || poidsActuel <= 0) {
       return "Le poids actuel est obligatoire (ex: 4.5).";
     }
@@ -671,6 +711,14 @@ export default function Home() {
 
     init();
   }, []);
+
+  useEffect(() => {
+    if (!authChecked || isAuthenticated) return;
+    if (hasLegacyBabyPrenom()) return;
+    const sessionId = demoSessionId || getOrCreateSessionId();
+    if (hasDemoBaby(sessionId)) return;
+    setShowBabySetupModal(true);
+  }, [authChecked, isAuthenticated, demoSessionId]);
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -1305,8 +1353,14 @@ export default function Home() {
       return;
     }
 
-    const poidsNaissance = parseFloat(demoBabyPoidsNaissance.replace(",", "."));
     const poidsActuel = parseFloat(demoBabyPoidsActuel.replace(",", "."));
+    const poidsNaissanceParsed = parseFloat(
+      demoBabyPoidsNaissance.replace(",", ".")
+    );
+    const poidsNaissance =
+      demoBabyPoidsNaissance && poidsNaissanceParsed > 0
+        ? poidsNaissanceParsed
+        : poidsActuel;
     const sessionId = demoSessionId || getOrCreateSessionId();
     setDemoSessionId(sessionId);
 
@@ -1625,8 +1679,7 @@ export default function Home() {
   const showHeaderBaby =
     isAuthenticated ||
     (!isAuthenticated &&
-      hasLegacyBabyPrenom() &&
-      hasDemoBaby(demoSessionId));
+      (hasLegacyBabyPrenom() || hasDemoBaby(demoSessionId)));
 
   const displayBabyInfo =
     showHeaderBaby || showPersonalData ? babyInfo : "votre bébé";
@@ -2970,7 +3023,7 @@ export default function Home() {
         </div>
       </ModalSheet>
 
-      {/* Popup initialisation bébé démo */}
+      {/* Modale personnalisation bébé (premier chargement visiteur) */}
       {showBabySetupModal && (
         <div
           style={{
@@ -3001,15 +3054,26 @@ export default function Home() {
           >
             <h3
               style={{
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: 800,
                 color: "#4A3F5C",
                 margin: 0,
                 textAlign: "center",
               }}
             >
-              C&apos;est pour qui ? 🍼
+              👶 Personnalisons l&apos;app !
             </h3>
+            <p
+              style={{
+                fontSize: 14,
+                color: "#8B7FA0",
+                margin: "8px 0 0",
+                textAlign: "center",
+                fontWeight: 500,
+              }}
+            >
+              Pour une expérience adaptée à votre bébé
+            </p>
 
             {babySetupError && (
               <p
@@ -3047,6 +3111,7 @@ export default function Home() {
               }}
               placeholder="Prénom de votre bébé"
               autoFocus
+              required
               style={{
                 width: "100%",
                 padding: "14px 16px",
@@ -3165,43 +3230,7 @@ export default function Home() {
                 marginBottom: 6,
               }}
             >
-              Poids de naissance (kg)
-            </label>
-            <input
-              type="number"
-              value={demoBabyPoidsNaissance}
-              onChange={(e) => {
-                setDemoBabyPoidsNaissance(e.target.value);
-                setBabySetupError(null);
-              }}
-              placeholder="3.2"
-              step="0.1"
-              min="0.5"
-              max="8"
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                borderRadius: 12,
-                border: "1.5px solid #F0E8F8",
-                fontSize: 15,
-                backgroundColor: "#FDF8F2",
-                color: "#4A3F5C",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#4A3F5C",
-                marginTop: 12,
-                marginBottom: 6,
-              }}
-            >
-              Poids actuel (kg)
+              Poids actuel en kg
             </label>
             <input
               type="number"
@@ -3226,16 +3255,6 @@ export default function Home() {
                 boxSizing: "border-box",
               }}
             />
-            <p
-              style={{
-                fontSize: 12,
-                color: "#8B7FA0",
-                marginTop: 6,
-                marginBottom: 0,
-              }}
-            >
-              Utilisé pour calculer les doses
-            </p>
 
             <label
               style={{
@@ -3302,8 +3321,22 @@ export default function Home() {
                 cursor: "pointer",
               }}
             >
-              C&apos;est parti !
+              C&apos;est parti ! →
             </button>
+
+            <p
+              style={{
+                fontSize: 11,
+                color: "#8B7FA0",
+                textAlign: "center",
+                marginTop: 16,
+                marginBottom: 0,
+                lineHeight: 1.5,
+              }}
+            >
+              Vos données restent sur cet appareil — créez un compte pour les
+              sauvegarder
+            </p>
           </div>
         </div>
       )}
