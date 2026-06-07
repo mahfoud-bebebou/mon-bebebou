@@ -28,9 +28,7 @@ import {
   getAgeInDays,
   getDemoBaby,
   getOrCreateSessionId,
-  hasDemoBaby,
   isDemoSessionPast24h,
-  saveWeightLocalStorage,
   insertDemoEvent,
   markInvite8Shown,
   saveDemoBaby,
@@ -336,23 +334,13 @@ export default function Home() {
   const [skeletonRevealed, setSkeletonRevealed] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showSignupModal, setShowSignupModal] = useState(false);
-  const [showBabySetupModal, setShowBabySetupModal] = useState(false);
   const [demoSessionId, setDemoSessionId] = useState("");
-  const [demoBabyPrenom, setDemoBabyPrenom] = useState("");
-  const [demoBabySexe, setDemoBabySexe] = useState<DemoBabySexe | "">("");
-  const [demoBabyDateNaissance, setDemoBabyDateNaissance] = useState("");
-  const [demoBabyPoidsNaissance, setDemoBabyPoidsNaissance] = useState("");
-  const [demoBabyPoidsActuel, setDemoBabyPoidsActuel] = useState("");
-  const [demoBabyParcours, setDemoBabyParcours] = useState<DemoParcours | "">("");
   const [demoBaby, setDemoBaby] = useState<DemoBaby | null>(null);
   const [demoBabyName, setDemoBabyName] = useState("");
   const [lastRecordedEventType, setLastRecordedEventType] =
     useState<EventType | null>(null);
-  const [pendingCardType, setPendingCardType] = useState<EventType | null>(null);
-  const [pendingShare, setPendingShare] = useState(false);
   const [demoReady, setDemoReady] = useState(false);
   const [showDemoExpiryBanner, setShowDemoExpiryBanner] = useState(false);
-  const [babySetupError, setBabySetupError] = useState<string | null>(null);
   const [babyContext, setBabyContext] = useState<BabyMessageContext | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastBackgroundColor, setToastBackgroundColor] = useState("#4A3F5C");
@@ -397,12 +385,6 @@ export default function Home() {
     const metrics = computeDemoBabyMetrics(baby);
     setDemoBaby(baby);
     setDemoBabyName(baby.prenom);
-    setDemoBabyPrenom(baby.prenom);
-    setDemoBabySexe(baby.sexe);
-    setDemoBabyDateNaissance(baby.date_naissance);
-    setDemoBabyPoidsNaissance(String(baby.poids_naissance));
-    setDemoBabyPoidsActuel(String(baby.poids_actuel));
-    setDemoBabyParcours(baby.parcours);
     setBabyInfo(`${baby.prenom} · ${metrics.ageLabel}`);
     setBabyContext({
       prenom: baby.prenom,
@@ -420,12 +402,6 @@ export default function Home() {
   function resetVisitorBabyStates() {
     setDemoBaby(null);
     setDemoBabyName("");
-    setDemoBabyPrenom("");
-    setDemoBabySexe("");
-    setDemoBabyDateNaissance("");
-    setDemoBabyPoidsNaissance("");
-    setDemoBabyPoidsActuel("");
-    setDemoBabyParcours("");
     setBabyContext(null);
     setBabyInfo("votre bébé");
     setAvatarUrl(null);
@@ -658,18 +634,6 @@ export default function Home() {
     []
   );
 
-  function validateBabySetup(): string | null {
-    if (!demoBabyPrenom.trim()) return "Le prénom du bébé est obligatoire.";
-    if (!demoBabySexe) return "Le sexe est obligatoire.";
-    if (!demoBabyDateNaissance) return "La date de naissance est obligatoire.";
-    const poidsActuel = parseFloat(demoBabyPoidsActuel.replace(",", "."));
-    if (!demoBabyPoidsActuel || !poidsActuel || poidsActuel <= 0) {
-      return "Le poids actuel est obligatoire (ex: 4.5).";
-    }
-    if (!demoBabyParcours) return "Le parcours d'alimentation est obligatoire.";
-    return null;
-  }
-
   useLayoutEffect(() => {
     const sessionId = getOrCreateSessionId();
     setDemoSessionId(sessionId);
@@ -711,14 +675,6 @@ export default function Home() {
 
     init();
   }, []);
-
-  useEffect(() => {
-    if (!authChecked || isAuthenticated) return;
-    if (hasLegacyBabyPrenom()) return;
-    const sessionId = demoSessionId || getOrCreateSessionId();
-    if (hasDemoBaby(sessionId)) return;
-    setShowBabySetupModal(true);
-  }, [authChecked, isAuthenticated, demoSessionId]);
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -1094,13 +1050,6 @@ export default function Home() {
   }
 
   function handleShareClick() {
-    const sessionId = demoSessionId || getOrCreateSessionId();
-    if (!hasDemoBaby(sessionId)) {
-      setPendingShare(true);
-      setBabySetupError(null);
-      setShowBabySetupModal(true);
-      return;
-    }
     setShowSignupModal(true);
   }
 
@@ -1320,79 +1269,12 @@ export default function Home() {
 
   function handleSommeilClick() {
     if (saving) return;
-
-    const sessionId = demoSessionId || getOrCreateSessionId();
-    if (!isAuthenticated && !hasDemoBaby(sessionId)) {
-      setPendingCardType("sieste");
-      setBabySetupError(null);
-      setShowBabySetupModal(true);
-      return;
-    }
-
     openSommeilChoice();
   }
 
   function handleCardClick(type: EventType) {
     if (saving) return;
-
-    const sessionId = demoSessionId || getOrCreateSessionId();
-    if (!isAuthenticated && !hasDemoBaby(sessionId)) {
-      setPendingCardType(type);
-      setBabySetupError(null);
-      setShowBabySetupModal(true);
-      return;
-    }
-
     proceedWithCard(type);
-  }
-
-  function handleBabySetupSubmit() {
-    const validationError = validateBabySetup();
-    if (validationError) {
-      setBabySetupError(validationError);
-      return;
-    }
-
-    const poidsActuel = parseFloat(demoBabyPoidsActuel.replace(",", "."));
-    const poidsNaissanceParsed = parseFloat(
-      demoBabyPoidsNaissance.replace(",", ".")
-    );
-    const poidsNaissance =
-      demoBabyPoidsNaissance && poidsNaissanceParsed > 0
-        ? poidsNaissanceParsed
-        : poidsActuel;
-    const sessionId = demoSessionId || getOrCreateSessionId();
-    setDemoSessionId(sessionId);
-
-    const baby: DemoBaby = {
-      session_id: sessionId,
-      prenom: demoBabyPrenom.trim(),
-      sexe: demoBabySexe as DemoBabySexe,
-      date_naissance: demoBabyDateNaissance,
-      poids_naissance: poidsNaissance,
-      poids_actuel: poidsActuel,
-      parcours: demoBabyParcours as DemoParcours,
-    };
-
-    computeDemoBabyMetrics(baby);
-    saveDemoBaby(baby);
-    saveWeightLocalStorage(poidsNaissance, poidsActuel);
-    applyDemoBabyToUI(baby);
-    setShowBabySetupModal(false);
-    setBabySetupError(null);
-    setError(null);
-
-    if (pendingShare) {
-      setPendingShare(false);
-      setShowSignupModal(true);
-      return;
-    }
-
-    if (pendingCardType) {
-      const type = pendingCardType;
-      setPendingCardType(null);
-      proceedWithCard(type);
-    }
   }
 
   function handleBiberonSubmit() {
@@ -1445,7 +1327,6 @@ export default function Home() {
     setUserEmail(null);
     setActiveModal(null);
     setShowSignupModal(false);
-    setShowBabySetupModal(false);
 
     const sessionId = getOrCreateSessionId();
     const storedBaby = getDemoBaby(sessionId);
@@ -1678,8 +1559,7 @@ export default function Home() {
 
   const showHeaderBaby =
     isAuthenticated ||
-    (!isAuthenticated &&
-      (hasLegacyBabyPrenom() || hasDemoBaby(demoSessionId)));
+    (!isAuthenticated && Boolean(demoBaby?.prenom || babyContext?.prenom));
 
   const displayBabyInfo =
     showHeaderBaby || showPersonalData ? babyInfo : "votre bébé";
@@ -3022,324 +2902,6 @@ export default function Home() {
           </button>
         </div>
       </ModalSheet>
-
-      {/* Modale personnalisation bébé (premier chargement visiteur) */}
-      {showBabySetupModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(0,0,0,0.5)",
-            zIndex: 1000,
-            padding: "20px",
-            overflowY: "auto",
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: "420px",
-              margin: "auto",
-              backgroundColor: "white",
-              borderRadius: 24,
-              padding: "28px 24px",
-              boxShadow: "0 8px 32px rgba(74,63,92,0.15)",
-            }}
-          >
-            <h3
-              style={{
-                fontSize: 20,
-                fontWeight: 800,
-                color: "#4A3F5C",
-                margin: 0,
-                textAlign: "center",
-              }}
-            >
-              👶 Personnalisons l&apos;app !
-            </h3>
-            <p
-              style={{
-                fontSize: 14,
-                color: "#8B7FA0",
-                margin: "8px 0 0",
-                textAlign: "center",
-                fontWeight: 500,
-              }}
-            >
-              Pour une expérience adaptée à votre bébé
-            </p>
-
-            {babySetupError && (
-              <p
-                style={{
-                  marginTop: 12,
-                  marginBottom: 0,
-                  fontSize: 13,
-                  color: "#C03060",
-                  textAlign: "center",
-                  fontWeight: 500,
-                }}
-              >
-                {babySetupError}
-              </p>
-            )}
-
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#4A3F5C",
-                marginTop: 16,
-                marginBottom: 6,
-              }}
-            >
-              Prénom du bébé
-            </label>
-            <input
-              type="text"
-              value={demoBabyPrenom}
-              onChange={(e) => {
-                setDemoBabyPrenom(e.target.value);
-                setBabySetupError(null);
-              }}
-              placeholder="Prénom de votre bébé"
-              autoFocus
-              required
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                borderRadius: 12,
-                border: "1.5px solid #F0E8F8",
-                fontSize: 15,
-                backgroundColor: "#FDF8F2",
-                color: "#4A3F5C",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#4A3F5C",
-                marginTop: 12,
-                marginBottom: 6,
-              }}
-            >
-              Sexe
-            </label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setDemoBabySexe("fille");
-                  setBabySetupError(null);
-                }}
-                style={{
-                  flex: 1,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border:
-                    demoBabySexe === "fille"
-                      ? "1.5px solid #E8406A"
-                      : "1.5px solid #F0E8F8",
-                  backgroundColor:
-                    demoBabySexe === "fille" ? "#E8406A" : "white",
-                  color: demoBabySexe === "fille" ? "white" : "#4A3F5C",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                👧 Fille
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDemoBabySexe("garcon");
-                  setBabySetupError(null);
-                }}
-                style={{
-                  flex: 1,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border:
-                    demoBabySexe === "garcon"
-                      ? "1.5px solid #E8406A"
-                      : "1.5px solid #F0E8F8",
-                  backgroundColor:
-                    demoBabySexe === "garcon" ? "#E8406A" : "white",
-                  color: demoBabySexe === "garcon" ? "white" : "#4A3F5C",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                👦 Garçon
-              </button>
-            </div>
-
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#4A3F5C",
-                marginTop: 12,
-                marginBottom: 6,
-              }}
-            >
-              Date de naissance
-            </label>
-            <input
-              type="date"
-              value={demoBabyDateNaissance}
-              onChange={(e) => {
-                setDemoBabyDateNaissance(e.target.value);
-                setBabySetupError(null);
-              }}
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                borderRadius: 12,
-                border: "1.5px solid #F0E8F8",
-                fontSize: 15,
-                backgroundColor: "#FDF8F2",
-                color: "#4A3F5C",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#4A3F5C",
-                marginTop: 12,
-                marginBottom: 6,
-              }}
-            >
-              Poids actuel en kg
-            </label>
-            <input
-              type="number"
-              value={demoBabyPoidsActuel}
-              onChange={(e) => {
-                setDemoBabyPoidsActuel(e.target.value);
-                setBabySetupError(null);
-              }}
-              placeholder="4.5"
-              step="0.1"
-              min="0.5"
-              max="15"
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                borderRadius: 12,
-                border: "1.5px solid #F0E8F8",
-                fontSize: 15,
-                backgroundColor: "#FDF8F2",
-                color: "#4A3F5C",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#4A3F5C",
-                marginTop: 12,
-                marginBottom: 6,
-              }}
-            >
-              Parcours
-            </label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {(
-                [
-                  ["allaite", "🤱 Allaitement"],
-                  ["artificiel", "🍼 Biberon"],
-                  ["mixte", "🤱🍼 Mixte"],
-                ] as [DemoParcours, string][]
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => {
-                    setDemoBabyParcours(value);
-                    setBabySetupError(null);
-                  }}
-                  style={{
-                    flex: "1 1 45%",
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border:
-                      demoBabyParcours === value
-                        ? "1.5px solid #E8406A"
-                        : "1.5px solid #F0E8F8",
-                    backgroundColor:
-                      demoBabyParcours === value ? "#E8406A" : "white",
-                    color: demoBabyParcours === value ? "white" : "#4A3F5C",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleBabySetupSubmit}
-              style={{
-                width: "100%",
-                marginTop: 20,
-                padding: "14px",
-                borderRadius: 14,
-                backgroundColor: "#E8406A",
-                color: "white",
-                fontSize: 15,
-                fontWeight: 700,
-                border: "none",
-                boxShadow: "0 4px 16px rgba(232,64,106,0.35)",
-                cursor: "pointer",
-              }}
-            >
-              C&apos;est parti ! →
-            </button>
-
-            <p
-              style={{
-                fontSize: 11,
-                color: "#8B7FA0",
-                textAlign: "center",
-                marginTop: 16,
-                marginBottom: 0,
-                lineHeight: 1.5,
-              }}
-            >
-              Vos données restent sur cet appareil — créez un compte pour les
-              sauvegarder
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Popup invitation mode démo */}
       {showSignupModal && (
