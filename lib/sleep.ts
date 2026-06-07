@@ -24,6 +24,12 @@ export type NuitNoteData = {
   totalReveils: number;
 };
 
+export type SommeilMeta = {
+  heure_debut: string;
+  heure_fin: string;
+  nb_reveils?: number;
+};
+
 export type ActiveSieste = {
   scopeId: string;
   start: string;
@@ -67,6 +73,23 @@ export function formatDurationHM(totalMinutes: number): string {
   if (hours === 0) return `${mins}min`;
   if (mins === 0) return `${hours}h`;
   return `${hours}h ${mins}min`;
+}
+
+export function formatDurationCompact(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if (hours === 0) return `${mins}min`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h${String(mins).padStart(2, "0")}`;
+}
+
+export function calcDurationBetweenTimes(debut: string, fin: string): number {
+  const ref = new Date();
+  const start = combineDateAndTime(ref, debut);
+  let end = combineDateAndTime(ref, fin);
+  let diff = Math.round((end.getTime() - start.getTime()) / 60000);
+  if (diff < 0) diff += 24 * 60;
+  return Math.max(1, diff);
 }
 
 export function formatElapsedSince(startIso: string): string {
@@ -151,8 +174,12 @@ export function countTodayReveils(events: BebebouEvent[]): number {
   return events
     .filter((e) => e.type === "nuit" && isToday(e.created_at))
     .reduce((sum, e) => {
-      const data = parseJsonNote<NuitNoteData>(e.note);
-      return sum + (data?.totalReveils ?? 0);
+      const meta = parseJsonNote<SommeilMeta | NuitNoteData>(e.note);
+      if (!meta) return sum;
+      if ("nb_reveils" in meta && meta.nb_reveils != null) {
+        return sum + meta.nb_reveils;
+      }
+      return sum + ((meta as NuitNoteData).totalReveils ?? 0);
     }, 0);
 }
 
@@ -254,13 +281,33 @@ export function getSiesteDurationMinutes(
 
 export function getTimelineEventLabel(event: BebebouEvent): string {
   if (event.type === "sieste") {
-    const data = parseJsonNote<SiesteNoteData>(event.note);
-    if (data?.durationMin) {
-      return `Sieste · ${formatDurationHM(data.durationMin)}`;
+    const durationMin =
+      event.quantity ??
+      parseJsonNote<SiesteNoteData>(event.note)?.durationMin ??
+      (() => {
+        const meta = parseJsonNote<SommeilMeta>(event.note);
+        return meta
+          ? calcDurationBetweenTimes(meta.heure_debut, meta.heure_fin)
+          : null;
+      })();
+    if (durationMin) {
+      return `Sieste · ${formatDurationHM(durationMin)}`;
     }
     return "Sieste";
   }
   if (event.type === "nuit") {
+    const meta = parseJsonNote<SommeilMeta>(event.note);
+    if (meta?.heure_debut && meta.heure_fin) {
+      const sleep = formatDurationHM(
+        event.quantity ?? calcSleepMinutes(meta.heure_debut, meta.heure_fin)
+      );
+      const revCount = meta.nb_reveils ?? 0;
+      const rev =
+        revCount === 0
+          ? "sans réveil"
+          : `${revCount}${revCount >= 5 ? "+" : ""} réveil${revCount > 1 ? "s" : ""}`;
+      return `Nuit · ${sleep} · ${rev}`;
+    }
     const data = parseJsonNote<NuitNoteData>(event.note);
     if (data) {
       const sleep = formatDurationHM(calcSleepMinutes(data.coucher, data.lever));
@@ -277,6 +324,7 @@ export function getTimelineEventLabel(event: BebebouEvent): string {
 
 export const SIESTE_DURATION_OPTIONS = [30, 60, 90, 120] as const;
 export const NUIT_REVEIL_COUNTS = [0, 1, 2, 3, 4] as const;
+export const SOMMEIL_REVEIL_COUNTS = [0, 1, 2, 3, 4, 5] as const;
 
 export const REVEIL_CAUSES: { id: NuitReveilCause; label: string }[] = [
   { id: "faim", label: "🍼 Faim" },

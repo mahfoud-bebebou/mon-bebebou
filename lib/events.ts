@@ -96,11 +96,14 @@ export function getEventLabel(event: BebebouEvent): string {
         ? `Changement de couche — ${event.note}`
         : "Changement de couche";
     case "sieste": {
+      if (event.quantity) {
+        return getTimelineEventLabel(event) || `Sieste · ${event.quantity}min`;
+      }
       const data = parseJsonNote<SiesteNoteData>(event.note);
       if (data?.durationMin) {
         return getTimelineEventLabel(event) || "Sieste";
       }
-      return "Sieste démarrée";
+      return getTimelineEventLabel(event) || "Sieste";
     }
     case "nuit":
       return getTimelineEventLabel(event) || "Nuit";
