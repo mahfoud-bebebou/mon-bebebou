@@ -11,7 +11,6 @@ import {
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
-  fetchEventsByBabyId,
   formatTimeShort,
   getCardSubtitle,
   getEventEmoji,
@@ -617,6 +616,27 @@ export default function Home() {
     }
   }
 
+  async function fetchEventsByBabyId(babyId: string): Promise<BebebouEvent[]> {
+    const supabaseClient = createSupabaseClient();
+    const { data, error } = await supabaseClient
+      .from("events")
+      .select("*")
+      .eq("baby_id", babyId)
+      .neq("type", "sieste_active")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("Events error:", error);
+      return [];
+    }
+
+    const events = data ?? [];
+    console.log("Events loaded:", events.length);
+    setEvents(events);
+    return events;
+  }
+
   async function loadAuthenticatedData(): Promise<AuthenticatedBaby | null> {
     try {
       const supabaseClient = createSupabaseClient();
@@ -692,18 +712,22 @@ export default function Home() {
       setBaby(baby);
       applyAuthenticatedBabyToUI(baby);
 
-      const savedMode =
-        (baby.mode_nuit as ModeNuitState | null) ?? loadModeNuit(user.id);
-      if (savedMode?.actif) {
-        setModeNuit(true);
-        setModeNuitData(savedMode);
-        if (savedMode.coucher) setNuitCoucher(savedMode.coucher);
-        saveModeNuit(user.id, savedMode);
+      if (baby.mode_nuit != null) {
+        const savedMode = baby.mode_nuit as ModeNuitState;
+        if (savedMode.actif) {
+          setModeNuit(true);
+          setModeNuitData(savedMode);
+          if (savedMode.coucher) setNuitCoucher(savedMode.coucher);
+          saveModeNuit(user.id, savedMode);
+        }
+      } else {
+        clearModeNuit(user.id);
+        setModeNuit(false);
+        setModeNuitData(null);
       }
 
       console.log("Loading events for baby:", baby.id);
-      const events = await fetchEventsByBabyId(baby.id);
-      setEvents(events);
+      await fetchEventsByBabyId(baby.id);
 
       return baby;
     } catch (err) {
@@ -829,8 +853,7 @@ export default function Home() {
       if (!baby?.id) return;
 
       console.log("Loading events for baby:", baby.id);
-      const data = await fetchEventsByBabyId(baby.id);
-      setEvents(data);
+      await fetchEventsByBabyId(baby.id);
     } catch (err) {
       console.error(err);
       setError("Impossible de charger les événements");

@@ -22,7 +22,6 @@ import {
 } from "@/lib/demo";
 import {
   deleteEvent,
-  fetchEventsByBabyId,
   formatTimeShort,
   getEventEmoji,
   getEventLabel,
@@ -159,6 +158,20 @@ function createSupabaseClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+}
+
+function getPeriodStartDate(period: SuiviPeriod): string {
+  const dateDebut = new Date();
+  if (period === "today") {
+    dateDebut.setHours(0, 0, 0, 0);
+  } else if (period === "7days") {
+    dateDebut.setDate(dateDebut.getDate() - 7);
+    dateDebut.setHours(0, 0, 0, 0);
+  } else {
+    dateDebut.setDate(dateDebut.getDate() - 30);
+    dateDebut.setHours(0, 0, 0, 0);
+  }
+  return dateDebut.toISOString();
 }
 
 function filterByPeriod(
@@ -367,55 +380,42 @@ function SuiviPageContent() {
   const [sleepFin, setSleepFin] = useState(() => toTimeInputValue());
   const [sleepReveils, setSleepReveils] = useState(0);
 
-  const reloadEvents = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setError(null);
-    const supabase = createSupabaseClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      setIsAuthenticated(true);
-      setUserId(user.id);
-
-      if (babyId) {
-        const data = await fetchEventsByBabyId(babyId);
-        setEvents(data);
-      } else {
-        setEvents([]);
-      }
-      return;
-    }
-
-    setIsAuthenticated(false);
-    setUserId(null);
-    setBabyId(null);
-    setBabyPrenom(null);
-    setFamilyMembers([]);
-    const sessionId = getOrCreateSessionId();
-    setDemoSessionId(sessionId);
-    const data = await fetchDemoEvents(sessionId);
-    setEvents(data);
-  }, [babyId]);
-
-  useEffect(() => {
-    async function init() {
+    try {
+      setLoading(true);
       const supabase = createSupabaseClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return;
 
-      setUserId(user.id);
+      if (!user) {
+        setIsAuthenticated(false);
+        setUserId(null);
+        setBabyId(null);
+        setBabyPrenom(null);
+        setFamilyMembers([]);
+        const sessionId = getOrCreateSessionId();
+        setDemoSessionId(sessionId);
+        const data = await fetchDemoEvents(sessionId);
+        setEvents(data);
+        return;
+      }
+
       setIsAuthenticated(true);
+      setUserId(user.id);
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("family_id")
         .eq("id", user.id)
         .single();
 
-      if (!profile?.family_id) return;
+      if (profileError || !profile?.family_id) {
+        console.error("Erreur profil:", profileError);
+        setEvents([]);
+        return;
+      }
 
       const { data: membresData } = await supabase
         .from("profiles")
@@ -425,20 +425,46 @@ function SuiviPageContent() {
         setFamilyMembers(membresData as FamilyMemberProfile[]);
       }
 
-      const { data: baby } = await supabase
+      const { data: baby, error: babyError } = await supabase
         .from("babies")
         .select("id, prenom")
         .eq("family_id", profile.family_id)
-        .single();
+        .maybeSingle();
 
-      if (baby) {
-        setBabyId(baby.id);
-        setBabyPrenom(baby.prenom ?? null);
+      if (babyError || !baby) {
+        console.error("Erreur bébé:", babyError);
+        setBabyId(null);
+        setBabyPrenom(null);
+        setEvents([]);
+        return;
       }
-    }
 
-    void init();
-  }, []);
+      setBabyId(baby.id);
+      setBabyPrenom(baby.prenom ?? null);
+
+      const { data, error } = await supabase
+        .from("events")
+        .select("*")
+        .eq("baby_id", baby.id)
+        .neq("type", "sieste_active")
+        .gte("created_at", getPeriodStartDate(period))
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Events error:", error);
+        setEvents([]);
+        return;
+      }
+
+      setEvents(data ?? []);
+    } catch (err) {
+      console.error(err);
+      setError("Impossible de charger l'historique");
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [period]);
 
   const showToast = useCallback(
     (message: string, options?: { coparent?: boolean }) => {
@@ -519,20 +545,8 @@ function SuiviPageContent() {
   }, [events, userSettings, isAuthenticated, babyPrenom]);
 
   useEffect(() => {
-    async function init() {
-      try {
-        await reloadEvents();
-      } catch (err) {
-        console.error(err);
-        setError("Impossible de charger l'historique");
-        setEvents([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    init();
-  }, [reloadEvents]);
+    void loadData();
+  }, [loadData]);
 
   useEffect(() => {
     const categorieParam = searchParams.get("categorie");
@@ -789,7 +803,7 @@ function SuiviPageContent() {
         await updateDemoEvent(sessionId, editingEvent.id, payload);
       }
 
-      await reloadEvents();
+      await loadData();
       setEditingEvent(null);
     } catch (err) {
       console.error(err);
@@ -814,7 +828,7 @@ function SuiviPageContent() {
         await deleteDemoEvent(sessionId, editingEvent.id);
       }
 
-      await reloadEvents();
+      await loadData();
       setEditingEvent(null);
     } catch (err) {
       console.error(err);
@@ -878,7 +892,7 @@ function SuiviPageContent() {
         );
       }
 
-      await reloadEvents();
+      await loadData();
       setShowSleepModal(false);
     } catch (err) {
       console.error(err);
