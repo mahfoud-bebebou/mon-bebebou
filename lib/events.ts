@@ -29,12 +29,10 @@ export async function fetchEventsByBabyId(
     .select("*")
     .eq("baby_id", babyId)
     .neq("type", "sieste_active")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(50);
 
-  if (error) {
-    console.error("Events error:", error);
-    return [];
-  }
+  if (error) throw error;
   return data ?? [];
 }
 
