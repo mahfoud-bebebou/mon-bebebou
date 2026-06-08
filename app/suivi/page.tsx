@@ -345,6 +345,7 @@ export default function SuiviPage() {
 
 function SuiviPageContent() {
   const searchParams = useSearchParams();
+  const supabase = createSupabaseClient();
   const [events, setEvents] = useState<BebebouEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<SuiviPeriod>("today");
@@ -384,7 +385,6 @@ function SuiviPageContent() {
     setError(null);
     try {
       setLoading(true);
-      const supabase = createSupabaseClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -489,14 +489,12 @@ function SuiviPageContent() {
 
   useEffect(() => {
     if (!isAuthenticated || !userId) return;
-    const supabase = createSupabaseClient();
     void loadUserSettings(supabase, userId).then(setUserSettings);
   }, [isAuthenticated, userId]);
 
   useEffect(() => {
     if (!isAuthenticated || !babyId || !userId) return;
 
-    const supabase = createSupabaseClient();
     const currentUserId = userId;
 
     const channel = supabase
