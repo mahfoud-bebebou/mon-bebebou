@@ -1,9 +1,17 @@
-const CACHE_NAME = 'bebebou-v1'
+const CACHE_NAME = 'bebebou-v2'
 self.addEventListener('install', event => {
   self.skipWaiting()
 })
 self.addEventListener('activate', event => {
-  event.waitUntil(clients.claim())
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames
+          .filter(name => name !== CACHE_NAME)
+          .map(name => caches.delete(name))
+      )
+    }).then(() => clients.claim())
+  )
 })
 // NE PAS intercepter les requêtes de navigation
 // Laisser le réseau gérer toutes les pages
