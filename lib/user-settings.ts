@@ -6,6 +6,7 @@ export const USER_SETTINGS_STORAGE_KEY = "user_settings";
 export type UserSettings = {
   user_id?: string;
   baby_id?: string | null;
+  notif_enabled?: boolean;
   notif_delay_minutes?: number;
   couche_alert_enabled?: boolean;
   couche_alert_hours?: number;
@@ -26,6 +27,7 @@ export type UserSettings = {
 
 export function getDefaultUserSettings(): UserSettings {
   return {
+    notif_enabled: false,
     notif_delay_minutes: 15,
     couche_alert_enabled: true,
     couche_alert_hours: 4,

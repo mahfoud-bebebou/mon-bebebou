@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   baby_id uuid REFERENCES babies(id) ON DELETE SET NULL,
+  notif_enabled boolean DEFAULT false,
   notif_delay_minutes integer DEFAULT 15,
   couche_alert_enabled boolean DEFAULT true,
   couche_alert_hours integer DEFAULT 4,

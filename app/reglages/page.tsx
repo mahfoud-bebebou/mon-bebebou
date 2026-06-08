@@ -178,8 +178,8 @@ export default function ReglagesPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [babyId, setBabyId] = useState<string | null>(null);
   const [settings, setSettings] = useState<UserSettings>(getDefaultUserSettings());
-  const [pushEnabled, setPushEnabled] = useState(false);
-  const [notifPermission, setNotifPermission] = useState<string>("default");
+  const [notifEnabled, setNotifEnabled] = useState(false);
+  const [notifDenied, setNotifDenied] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
 
   const [familyId, setFamilyId] = useState<string | null>(null);
@@ -225,24 +225,24 @@ export default function ReglagesPage() {
     [userId, babyId, settings]
   );
 
-  const syncPushState = useCallback(async () => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    setNotifPermission(Notification.permission);
-    if (Notification.permission !== "granted") {
-      setPushEnabled(false);
-      return;
+  const saveSettings = useCallback(
+    async (key: keyof UserSettings, value: UserSettings[keyof UserSettings]) => {
+      await persist(key, value);
+    },
+    [persist]
+  );
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifEnabled(Notification.permission === "granted");
+      setNotifDenied(Notification.permission === "denied");
     }
-    if (!("serviceWorker" in navigator)) return;
-    const reg = await navigator.serviceWorker.getRegistration("/sw.js");
-    const sub = await reg?.pushManager.getSubscription();
-    setPushEnabled(Boolean(sub));
   }, []);
 
   useEffect(() => {
     const local = loadSettingsFromLocalStorage();
     if (local) applySettings(local);
-    void syncPushState();
-  }, [applySettings, syncPushState]);
+  }, [applySettings]);
 
   useEffect(() => {
     async function init() {
@@ -343,69 +343,76 @@ export default function ReglagesPage() {
     };
   }, [familyId, userId]);
 
-  async function enablePush() {
-    if (!userId || !babyId) return;
+  async function toggleNotifications() {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      alert("Les notifications ne sont pas supportées sur cet appareil");
+      return;
+    }
+    if (!userId) return;
+
     setPushLoading(true);
     try {
-      const permission = await Notification.requestPermission();
-      setNotifPermission(permission);
-      if (permission !== "granted") return;
-
-      const reg = await navigator.serviceWorker.register("/sw.js");
-      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      const existing = await reg.pushManager.getSubscription();
-      const subscription =
-        existing ||
-        (vapidKey
-          ? await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: vapidKey,
-            })
-          : null);
-
-      if (!subscription) {
-        showToast("Clé VAPID manquante");
+      if (Notification.permission === "granted") {
+        if ("serviceWorker" in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            await sub.unsubscribe();
+            await fetch("/api/push/subscribe", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_id: userId }),
+            });
+          }
+        }
+        setNotifEnabled(false);
+        await saveSettings("notif_enabled", false);
+        showToast("Rappels biberon désactivés");
         return;
       }
 
-      await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subscription: subscription.toJSON(),
-          baby_id: babyId,
-          user_id: userId,
-        }),
-      });
+      const permission = await Notification.requestPermission();
+      setNotifDenied(permission === "denied");
 
-      setPushEnabled(true);
-      showToast("Rappels biberon activés ✅");
-    } finally {
-      setPushLoading(false);
-    }
-  }
+      if (permission === "granted") {
+        if (!babyId) {
+          showToast("Profil bébé introuvable");
+          return;
+        }
 
-  async function disablePush() {
-    if (!userId) return;
-    setPushLoading(true);
-    try {
-      if ("serviceWorker" in navigator) {
-        const reg = await navigator.serviceWorker.getRegistration("/sw.js");
-        const sub = await reg?.pushManager.getSubscription();
-        await sub?.unsubscribe();
+        await navigator.serviceWorker.register("/sw.js");
+        const reg = await navigator.serviceWorker.ready;
+        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+        if (!vapidKey) {
+          showToast("Clé VAPID manquante");
+          return;
+        }
+
+        const existing = await reg.pushManager.getSubscription();
+        const sub =
+          existing ||
+          (await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: vapidKey,
+          }));
+
+        await fetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subscription: sub.toJSON(),
+            baby_id: babyId,
+            user_id: userId,
+          }),
+        });
+
+        setNotifEnabled(true);
+        await saveSettings("notif_enabled", true);
+        showToast("Rappels biberon activés ✅");
       }
-      const supabase = createSupabaseClient();
-      await supabase.from("push_subscriptions").delete().eq("user_id", userId);
-      setPushEnabled(false);
-      showToast("Rappels biberon désactivés");
     } finally {
       setPushLoading(false);
     }
-  }
-
-  async function handlePushToggle(enabled: boolean) {
-    if (enabled) await enablePush();
-    else await disablePush();
   }
 
   async function handleExportData() {
@@ -540,39 +547,20 @@ export default function ReglagesPage() {
         <section style={sectionCard}>
           <h2 style={sectionTitle}>🔔 Notifications</h2>
 
-          {notifPermission === "denied" ? (
+          {notifDenied && (
             <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 12px" }}>
               Désactivé dans les réglages iOS
             </p>
-          ) : notifPermission === "default" ? (
-            <button
-              type="button"
-              onClick={() => void enablePush()}
-              disabled={pushLoading}
-              style={{
-                width: "100%",
-                padding: "12px",
-                borderRadius: 14,
-                border: "none",
-                backgroundColor: "#E8406A",
-                color: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-                marginBottom: 12,
-              }}
-            >
-              Activer les rappels biberon
-            </button>
-          ) : (
-            <ToggleRow
-              label="Rappels biberon"
-              checked={pushEnabled}
-              disabled={pushLoading}
-              onChange={(v) => void handlePushToggle(v)}
-            />
           )}
 
-          {pushEnabled && notifPermission === "granted" && (
+          <ToggleRow
+            label="Rappels biberon"
+            checked={notifEnabled}
+            disabled={pushLoading || notifDenied}
+            onChange={() => void toggleNotifications()}
+          />
+
+          {notifEnabled && (
             <>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "8px 0 0" }}>
                 Délai rappel biberon

@@ -21,3 +21,15 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true })
 }
+
+export async function DELETE(req: NextRequest) {
+  const { user_id } = await req.json()
+
+  if (!user_id) {
+    return NextResponse.json({ error: 'user_id required' }, { status: 400 })
+  }
+
+  await supabase.from('push_subscriptions').delete().eq('user_id', user_id)
+
+  return NextResponse.json({ ok: true })
+}
