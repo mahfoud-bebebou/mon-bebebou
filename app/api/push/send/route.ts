@@ -52,7 +52,7 @@ export async function GET() {
     const { data: userSettings } = await supabase
       .from('user_settings')
       .select(
-        'notif_delay_minutes, notif_enabled, biberon_intervalle_auto, biberon_intervalle_minutes, sieste_alerte_enabled, sieste_alerte_minutes, sieste_notif_enabled, nuit_notif_enabled'
+        'notif_delay_minutes, notif_enabled, biberon_intervalle_auto, biberon_intervalle_minutes, sieste_alerte_enabled, sieste_alerte_minutes, sieste_notif_enabled, sieste_notif_interval_minutes, nuit_notif_enabled, nuit_notif_interval_minutes, nuit_alerte_courte_enabled, nuit_alerte_courte_minutes'
       )
       .eq('user_id', sub.user_id)
       .maybeSingle()
@@ -124,9 +124,13 @@ export async function GET() {
       if (siesteActive) {
         const minutesSieste =
           (Date.now() - new Date(siesteActive.created_at).getTime()) / 60000
-        const remainder = minutesSieste % 15
+        const siesteInterval = userSettings.sieste_notif_interval_minutes ?? 15
+        const siesteRemainder = minutesSieste % siesteInterval
 
-        if (remainder >= 14 && remainder <= 16) {
+        if (
+          siesteRemainder >= siesteInterval - 1 &&
+          siesteRemainder <= siesteInterval + 1
+        ) {
           await sendPush(
             '😴 Sieste en cours',
             `${prenom} dort depuis ${formatSiesteDuration(minutesSieste)}`
@@ -134,8 +138,8 @@ export async function GET() {
         }
 
         if (userSettings.sieste_alerte_enabled) {
-          const seuilMin = userSettings.sieste_alerte_minutes ?? 120
-          if (Math.floor(minutesSieste) === seuilMin) {
+          const seuil = userSettings.sieste_alerte_minutes ?? 120
+          if (Math.floor(minutesSieste) === seuil) {
             await sendPush(
               '⏰ Sieste longue',
               `${prenom} dort depuis ${Math.floor(minutesSieste / 60)}h — c'est long pour une sieste !`
@@ -156,13 +160,49 @@ export async function GET() {
       if (modeNuitData?.mode_nuit?.actif) {
         const heureDebut = new Date(modeNuitData.mode_nuit.heure_debut)
         const minutesNuit = (Date.now() - heureDebut.getTime()) / 60000
-        const remainder = minutesNuit % 60
+        const nuitInterval = userSettings.nuit_notif_interval_minutes ?? 60
+        const nuitRemainder = minutesNuit % nuitInterval
 
-        if (remainder >= 59 && remainder <= 61) {
+        if (
+          nuitRemainder >= nuitInterval - 1 &&
+          nuitRemainder <= nuitInterval + 1
+        ) {
           const heures = Math.floor(minutesNuit / 60)
           await sendPush(
             '🌙 Nuit en cours',
             `${prenom} dort depuis ${heures}h — bonne nuit ! 😴`
+          )
+        }
+      }
+    }
+
+    if (userSettings?.nuit_alerte_courte_enabled) {
+      const seuilCourt = userSettings.nuit_alerte_courte_minutes ?? 360
+      const { data: derniereNuit } = await supabase
+        .from('events')
+        .select('*')
+        .eq('baby_id', baby.id)
+        .eq('type', 'nuit')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (derniereNuit?.quantity != null) {
+        const minutesSinceRecord =
+          (Date.now() - new Date(derniereNuit.created_at).getTime()) / 60000
+        if (
+          minutesSinceRecord <= 2 &&
+          derniereNuit.quantity < seuilCourt
+        ) {
+          const dureeH = Math.floor(derniereNuit.quantity / 60)
+          const dureeM = derniereNuit.quantity % 60
+          const dureeLabel =
+            dureeM > 0
+              ? `${dureeH}h${String(dureeM).padStart(2, '0')}`
+              : `${dureeH}h`
+          await sendPush(
+            '⚠️ Nuit courte',
+            `${prenom} n'a dormi que ${dureeLabel} — en dessous de votre seuil`
           )
         }
       }

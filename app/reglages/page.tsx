@@ -731,34 +731,100 @@ export default function ReglagesPage() {
               }}
             />
           </label>
+
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#4A3F5C", margin: "20px 0 0" }}>
+            😴 Sieste
+          </p>
           <ToggleRow
-            label="Rappels toutes les 15 min pendant la sieste"
-            description="Reçois une notif toutes les 15 min"
+            label="Notifications pendant la sieste"
             checked={Boolean(settings.sieste_notif_enabled)}
             onChange={(v) => void persist("sieste_notif_enabled", v)}
           />
+          {settings.sieste_notif_enabled && (
+            <>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "8px 0 0" }}>
+                Rappel toutes les...
+              </p>
+              <ChipGroup
+                options={[
+                  { label: "10 min", value: 10 },
+                  { label: "15 min", value: 15 },
+                  { label: "20 min", value: 20 },
+                  { label: "30 min", value: 30 },
+                  { label: "45 min", value: 45 },
+                  { label: "1h", value: 60 },
+                ]}
+                value={settings.sieste_notif_interval_minutes ?? 15}
+                onChange={(v) => void persist("sieste_notif_interval_minutes", v)}
+              />
+            </>
+          )}
           <ToggleRow
-            label="Rappels toutes les heures la nuit"
-            description="Reçois une notif chaque heure de nuit"
+            label="Alerte sieste trop longue"
+            checked={Boolean(settings.sieste_alerte_enabled)}
+            onChange={(v) => void persist("sieste_alerte_enabled", v)}
+          />
+          {settings.sieste_alerte_enabled && (
+            <>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "8px 0 0" }}>
+                M&apos;alerter si sieste dépasse...
+              </p>
+              <ChipGroup
+                options={[
+                  { label: "1h", value: 60 },
+                  { label: "1h30", value: 90 },
+                  { label: "2h", value: 120 },
+                  { label: "2h30", value: 150 },
+                  { label: "3h", value: 180 },
+                ]}
+                value={settings.sieste_alerte_minutes ?? 120}
+                onChange={(v) => void persist("sieste_alerte_minutes", v)}
+              />
+            </>
+          )}
+
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#4A3F5C", margin: "20px 0 0" }}>
+            🌙 Nuit
+          </p>
+          <ToggleRow
+            label="Notifications pendant la nuit"
             checked={Boolean(settings.nuit_notif_enabled)}
             onChange={(v) => void persist("nuit_notif_enabled", v)}
           />
+          {settings.nuit_notif_enabled && (
+            <>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "8px 0 0" }}>
+                Rappel toutes les...
+              </p>
+              <ChipGroup
+                options={[
+                  { label: "30 min", value: 30 },
+                  { label: "1h", value: 60 },
+                  { label: "2h", value: 120 },
+                  { label: "3h", value: 180 },
+                ]}
+                value={settings.nuit_notif_interval_minutes ?? 60}
+                onChange={(v) => void persist("nuit_notif_interval_minutes", v)}
+              />
+            </>
+          )}
           <ToggleRow
-            label="Alerte sieste longue"
-            checked={Boolean(settings.sieste_alerte_enabled)}
-            onChange={(v) => void persist("sieste_alerte_enabled", v)}
+            label="Alerte nuit trop courte"
+            checked={Boolean(settings.nuit_alerte_courte_enabled)}
+            onChange={(v) => void persist("nuit_alerte_courte_enabled", v)}
             border={false}
           />
-          {settings.sieste_alerte_enabled && (
+          {settings.nuit_alerte_courte_enabled && (
             <ChipGroup
               options={[
-                { label: "1h30", value: 90 },
-                { label: "2h", value: 120 },
-                { label: "2h30", value: 150 },
-                { label: "3h", value: 180 },
+                { label: "4h", value: 240 },
+                { label: "5h", value: 300 },
+                { label: "6h", value: 360 },
+                { label: "7h", value: 420 },
+                { label: "8h", value: 480 },
               ]}
-              value={settings.sieste_alerte_minutes ?? 120}
-              onChange={(v) => void persist("sieste_alerte_minutes", v)}
+              value={settings.nuit_alerte_courte_minutes ?? 360}
+              onChange={(v) => void persist("nuit_alerte_courte_minutes", v)}
             />
           )}
         </section>

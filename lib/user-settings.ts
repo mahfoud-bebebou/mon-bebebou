@@ -23,7 +23,11 @@ export type UserSettings = {
   sieste_alerte_enabled?: boolean;
   sieste_alerte_minutes?: number;
   sieste_notif_enabled?: boolean;
+  sieste_notif_interval_minutes?: number;
   nuit_notif_enabled?: boolean;
+  nuit_notif_interval_minutes?: number;
+  nuit_alerte_courte_enabled?: boolean;
+  nuit_alerte_courte_minutes?: number;
   unite_poids?: "kg" | "g";
   updated_at?: string;
 };
@@ -46,7 +50,11 @@ export function getDefaultUserSettings(): UserSettings {
     sieste_alerte_enabled: false,
     sieste_alerte_minutes: 120,
     sieste_notif_enabled: false,
+    sieste_notif_interval_minutes: 15,
     nuit_notif_enabled: false,
+    nuit_notif_interval_minutes: 60,
+    nuit_alerte_courte_enabled: false,
+    nuit_alerte_courte_minutes: 360,
     unite_poids: "kg",
   };
 }
