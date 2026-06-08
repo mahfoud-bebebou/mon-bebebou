@@ -8,15 +8,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-function initWebPush(): boolean {
-  const subject = process.env.VAPID_SUBJECT
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  const privateKey = process.env.VAPID_PRIVATE_KEY
-  if (!subject || !publicKey || !privateKey) return false
-  webpush.setVapidDetails(subject, publicKey, privateKey)
-  return true
-}
-
 function formatPrenom(prenom?: string | null): string {
   if (!prenom) return 'Bébé'
   return prenom.charAt(0).toUpperCase() + prenom.slice(1).toLowerCase()
@@ -31,9 +22,14 @@ function formatSiesteDuration(minutesSieste: number): string {
 }
 
 export async function GET() {
-  if (!initWebPush()) {
+  const subject = process.env.VAPID_SUBJECT
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  const privateKey = process.env.VAPID_PRIVATE_KEY
+  if (!subject || !publicKey || !privateKey) {
     return NextResponse.json({ sent: 0 })
   }
+
+  webpush.setVapidDetails(subject, publicKey, privateKey)
 
   const { data: subscriptions } = await supabase
     .from('push_subscriptions')
