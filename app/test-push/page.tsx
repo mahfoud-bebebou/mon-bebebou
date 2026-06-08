@@ -29,6 +29,13 @@ export default function TestPush() {
     addLog('Notification in window: ' + ('Notification' in window))
     addLog('ServiceWorker in navigator: ' + ('serviceWorker' in navigator))
     addLog('PushManager in window: ' + ('PushManager' in window))
+
+    if (!('Notification' in window) || !('PushManager' in window)) {
+      addLog("⚠️ Ouvre cette page depuis l'app installée sur l'écran d'accueil")
+      addLog('Les notifications ne fonctionnent pas depuis Safari directement')
+      return
+    }
+
     addLog('Permission: ' + Notification.permission)
 
     if (Notification.permission !== 'granted') {
