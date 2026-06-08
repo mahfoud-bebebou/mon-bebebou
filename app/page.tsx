@@ -3348,8 +3348,9 @@ export default function Home() {
         </div>
       </ModalSheet>
 
-      {showBabySetupModal && (
+      {!isAuthenticated && showBabySetupModal && (
         <div
+          onClick={() => setShowBabySetupModal(false)}
           style={{
             position: "fixed",
             top: 0,
@@ -3366,7 +3367,9 @@ export default function Home() {
           }}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
+              position: "relative",
               width: "100%",
               maxWidth: "420px",
               margin: "auto",
@@ -3376,6 +3379,23 @@ export default function Home() {
               boxShadow: "0 8px 32px rgba(74,63,92,0.15)",
             }}
           >
+            <button
+              type="button"
+              onClick={() => setShowBabySetupModal(false)}
+              aria-label="Fermer"
+              style={{
+                position: "absolute",
+                top: 16,
+                right: 16,
+                fontSize: 20,
+                color: "#8B7FA0",
+                backgroundColor: "transparent",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              ✕
+            </button>
             <h3
               style={{
                 fontSize: 18,
