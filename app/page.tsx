@@ -111,6 +111,17 @@ import {
   type TypeCouche,
   type TypeLait,
 } from "@/lib/couche";
+import {
+  getDefaultUserSettings,
+  getDefaultBiberonQuantity,
+  getEffectiveBiberonIntervalMinutes,
+  isCoparentNotifEnabled,
+  isInAutoNightWindow,
+  loadSettingsFromLocalStorage,
+  loadUserSettings,
+  mergeUserSettings,
+  type UserSettings,
+} from "@/lib/user-settings";
 import { AnimatePresence, motion } from "framer-motion";
 import { loadAuthAvatarUrl, loadBabyAvatar } from "@/lib/avatar";
 import type { BebebouEvent, EventType } from "@/lib/supabase";
@@ -460,6 +471,9 @@ export default function Home() {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
   const [userScopeId, setUserScopeId] = useState("");
+  const [userSettings, setUserSettings] = useState<UserSettings>(() =>
+    mergeUserSettings(getDefaultUserSettings(), loadSettingsFromLocalStorage())
+  );
   const [baby, setBaby] = useState<AuthenticatedBaby | null>(null);
   const [nightUiTick, setNightUiTick] = useState(0);
   const [modeNuit, setModeNuit] = useState(false);
@@ -768,8 +782,9 @@ export default function Home() {
     const profile = getFeedingProfile();
     const recommended = profile?.date_naissance
       ? getBiberonRecommandation(getAgeInDays(profile.date_naissance)).ml
-      : 120;
-    setBiberonMl(String(recommended));
+      : getDefaultBiberonQuantity(userSettings);
+    const defaultQty = getDefaultBiberonQuantity(userSettings) || recommended;
+    setBiberonMl(String(defaultQty));
     setBiberonMlEdited(false);
     setBiberonTakeTime(getCurrentTimeValue());
     setTeteeMinutes("15");
@@ -885,7 +900,11 @@ export default function Home() {
             return [newEvent, ...prev];
           });
 
-          if (newEvent.user_id && newEvent.user_id !== currentUserId) {
+          if (
+            newEvent.user_id &&
+            newEvent.user_id !== currentUserId &&
+            isCoparentNotifEnabled(userSettings)
+          ) {
             const emoji = getEventEmoji(newEvent.type);
             const label = getEventLabel(newEvent);
             const membre = familyMembers.find((m) => m.id === newEvent.user_id);
@@ -931,7 +950,17 @@ export default function Home() {
     return () => {
       void supabaseClient.removeChannel(channel);
     };
-  }, [baby?.id, isAuthenticated, userScopeId, showToast, familyMembers]);
+  }, [baby?.id, isAuthenticated, userScopeId, showToast, familyMembers, userSettings]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !userScopeId) return;
+    const local = loadSettingsFromLocalStorage();
+    if (local) {
+      setUserSettings(mergeUserSettings(getDefaultUserSettings(), local));
+    }
+    const supabaseClient = createSupabaseClient();
+    void loadUserSettings(supabaseClient, userScopeId).then(setUserSettings);
+  }, [isAuthenticated, userScopeId]);
 
   useEffect(() => {
     if (!isAuthenticated || !baby?.id || !userScopeId) return;
@@ -1774,10 +1803,18 @@ export default function Home() {
     ]
   );
 
+  const autoNightActive = useMemo(() => {
+    void nightUiTick;
+    return isInAutoNightWindow(userSettings);
+  }, [userSettings, nightUiTick]);
+
+  const suppressDashboardAlerts = modeNuit || autoNightActive;
+
   const coucheBandeau = useMemo(() => {
     if (!isAuthenticated || !feedingProfile?.prenom) return null;
+    if (suppressDashboardAlerts) return null;
     return getCoucheBandeauMessage(events, feedingProfile.prenom);
-  }, [events, feedingProfile, isAuthenticated]);
+  }, [events, feedingProfile, isAuthenticated, suppressDashboardAlerts]);
 
   const coucheDashboardAlerts = useMemo(() => {
     if (!isAuthenticated) return [];
@@ -1793,16 +1830,30 @@ export default function Home() {
   const biberonAlert = useMemo(() => {
     if (!isAuthenticated) return null;
     void biberonTick;
-    if (modeNuit) return null;
+    if (suppressDashboardAlerts) return null;
     if (!feedingProfile?.prenom || !feedingProfile.date_naissance) return null;
+    const ageEnJours = getAgeInDays(feedingProfile.date_naissance);
+    const parcours = feedingProfile.parcours ?? "artificiel";
     return getBiberonAlertState({
       dernierBiberon: lastBiberon ?? null,
       prenom: feedingProfile.prenom,
       sexe: feedingProfile.sexe,
-      ageEnJours: getAgeInDays(feedingProfile.date_naissance),
-      parcours: feedingProfile.parcours ?? "artificiel",
+      ageEnJours,
+      parcours,
+      intervalleMinutes: getEffectiveBiberonIntervalMinutes(
+        userSettings,
+        ageEnJours,
+        parcours
+      ),
     });
-  }, [biberonTick, lastBiberon, feedingProfile, modeNuit, isAuthenticated]);
+  }, [
+    biberonTick,
+    lastBiberon,
+    feedingProfile,
+    suppressDashboardAlerts,
+    isAuthenticated,
+    userSettings,
+  ]);
 
   const nightModeBiberonMessage = useMemo(() => {
     if (!isAuthenticated) return null;
@@ -1835,7 +1886,7 @@ export default function Home() {
     : 120;
 
   const biberonInverseTimer = useMemo(() => {
-    if (modeNuit) return null;
+    if (suppressDashboardAlerts) return null;
     void biberonTick;
     if (
       !biberonAlert?.afficherMinuteurInverse ||
@@ -1845,13 +1896,23 @@ export default function Home() {
     ) {
       return null;
     }
+    const ageEnJours = getAgeInDays(feedingProfile.date_naissance);
+    const parcours = feedingProfile.parcours ?? "artificiel";
     return formatBiberonInverseTimer(
       lastBiberon.created_at,
-      getAgeInDays(feedingProfile.date_naissance),
-      feedingProfile.parcours ?? "artificiel",
-      biberonAlert.minuteurMode
+      ageEnJours,
+      parcours,
+      biberonAlert.minuteurMode,
+      getEffectiveBiberonIntervalMinutes(userSettings, ageEnJours, parcours)
     );
-  }, [biberonTick, biberonAlert, lastBiberon, feedingProfile, modeNuit]);
+  }, [
+    biberonTick,
+    biberonAlert,
+    lastBiberon,
+    feedingProfile,
+    suppressDashboardAlerts,
+    userSettings,
+  ]);
 
   const biberonMlValue = Math.min(
     350,

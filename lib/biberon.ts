@@ -57,8 +57,16 @@ export function getBiberonAlertState(params: {
   sexe?: "fille" | "garcon" | null;
   ageEnJours: number;
   parcours: string;
+  intervalleMinutes?: number;
 }): BiberonAlertState {
-  const { dernierBiberon, prenom, sexe, ageEnJours, parcours } = params;
+  const {
+    dernierBiberon,
+    prenom,
+    sexe,
+    ageEnJours,
+    parcours,
+    intervalleMinutes,
+  } = params;
 
   if (!dernierBiberon) {
     return {
@@ -85,7 +93,8 @@ export function getBiberonAlertState(params: {
   const maintenant = Date.now();
   const dernierBiberonTime = new Date(dernierBiberon.created_at).getTime();
   const minutesEcoulees = (maintenant - dernierBiberonTime) / 60000;
-  const intervalle = getIntervalleMinutes(ageEnJours, parcours);
+  const intervalle =
+    intervalleMinutes ?? getIntervalleMinutes(ageEnJours, parcours);
   const pourcentage = (minutesEcoulees / intervalle) * 100;
   const hour = new Date().getHours();
   const estNuit = hour >= 22 || hour < 7;
@@ -176,9 +185,11 @@ export function formatBiberonInverseTimer(
   lastBiberonAt: string,
   ageEnJours: number,
   parcours: string,
-  mode: BiberonMinuteurMode
+  mode: BiberonMinuteurMode,
+  intervalleMinutes?: number
 ): string {
-  const intervalle = getIntervalleMinutes(ageEnJours, parcours);
+  const intervalle =
+    intervalleMinutes ?? getIntervalleMinutes(ageEnJours, parcours);
   const target = new Date(lastBiberonAt).getTime() + intervalle * 60 * 1000;
   const now = Date.now();
 

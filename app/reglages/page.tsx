@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
+import { fetchEventsByBabyId } from "@/lib/events";
 import {
   type FamilyMemberProfile,
   extractOnlineUserIds,
@@ -11,8 +13,14 @@ import {
   getMemberPrenom,
 } from "@/lib/family";
 import { getRoleLabel } from "@/lib/roles";
-
-const AUTO_NIGHT_MODE_KEY = "bebebou_auto_night_mode";
+import {
+  getDefaultUserSettings,
+  loadSettingsFromLocalStorage,
+  loadUserSettings,
+  mergeUserSettings,
+  saveUserSetting,
+  type UserSettings,
+} from "@/lib/user-settings";
 
 function createSupabaseClient() {
   return createBrowserClient(
@@ -21,23 +29,69 @@ function createSupabaseClient() {
   );
 }
 
-function sectionCardStyle() {
-  return {
-    backgroundColor: "white",
-    borderRadius: 24,
-    padding: 24,
-    boxShadow: "0 8px 32px rgba(74,63,92,0.10)",
-    marginBottom: 16,
-  };
-}
+const sectionCard = {
+  backgroundColor: "white",
+  borderRadius: 20,
+  padding: 20,
+  marginBottom: 16,
+  boxShadow: "0 2px 12px rgba(74,63,92,0.06)",
+} as const;
 
-function sectionTitleStyle() {
-  return {
-    fontSize: 16,
-    fontWeight: 800,
-    color: "#4A3F5C",
-    margin: "0 0 16px",
-  };
+const sectionTitle = {
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#8B7FA0",
+  textTransform: "uppercase" as const,
+  letterSpacing: 1,
+  marginBottom: 16,
+  marginTop: 0,
+};
+
+function Toggle({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 51,
+        height: 31,
+        borderRadius: 99,
+        border: "none",
+        backgroundColor: checked ? "#E8406A" : "#E5E5EA",
+        position: "relative",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        flexShrink: 0,
+        transition: "background-color 0.2s ease",
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: 2,
+          left: 0,
+          width: 27,
+          height: 27,
+          borderRadius: "50%",
+          backgroundColor: "white",
+          transform: checked ? "translateX(22px)" : "translateX(2px)",
+          transition: "transform 0.2s ease",
+          boxShadow: "0 1px 4px rgba(74,63,92,0.2)",
+        }}
+      />
+    </button>
+  );
 }
 
 function ToggleRow({
@@ -46,33 +100,28 @@ function ToggleRow({
   checked,
   disabled,
   onChange,
+  border = true,
 }: {
   label: string;
   description?: string;
   checked: boolean;
   disabled?: boolean;
   onChange: (value: boolean) => void;
+  border?: boolean;
 }) {
   return (
     <div
       style={{
         display: "flex",
-        alignItems: "center",
         justifyContent: "space-between",
-        gap: 16,
+        alignItems: "center",
         padding: "12px 0",
-        borderBottom: "1px solid #F0E8F5",
+        borderBottom: border ? "1px solid #F0E8F5" : "none",
+        gap: 16,
       }}
     >
       <div style={{ flex: 1 }}>
-        <p
-          style={{
-            margin: 0,
-            fontSize: 14,
-            fontWeight: 600,
-            color: disabled ? "#C4B5D4" : "#4A3F5C",
-          }}
-        >
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#4A3F5C" }}>
           {label}
         </p>
         {description && (
@@ -81,37 +130,44 @@ function ToggleRow({
           </p>
         )}
       </div>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        aria-pressed={checked}
-        style={{
-          width: 48,
-          height: 28,
-          borderRadius: 14,
-          border: "none",
-          backgroundColor: checked ? "#E8406A" : "#E8E0F0",
-          position: "relative",
-          cursor: disabled ? "not-allowed" : "pointer",
-          opacity: disabled ? 0.5 : 1,
-          flexShrink: 0,
-        }}
-      >
-        <span
-          style={{
-            position: "absolute",
-            top: 3,
-            left: checked ? 23 : 3,
-            width: 22,
-            height: 22,
-            borderRadius: "50%",
-            backgroundColor: "white",
-            transition: "left 0.2s ease",
-            boxShadow: "0 1px 4px rgba(74,63,92,0.2)",
-          }}
-        />
-      </button>
+      <Toggle checked={checked} disabled={disabled} onChange={onChange} />
+    </div>
+  );
+}
+
+function ChipGroup<T extends string | number>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { label: string; value: T }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+      {options.map((opt) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={String(opt.value)}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 20,
+              border: active ? "none" : "1.5px solid #F0E8F5",
+              backgroundColor: active ? "#E8406A" : "white",
+              color: active ? "white" : "#8B7FA0",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -120,25 +176,54 @@ export default function ReglagesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [babyId, setBabyId] = useState<string | null>(null);
+  const [settings, setSettings] = useState<UserSettings>(getDefaultUserSettings());
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<string>("default");
+  const [pushLoading, setPushLoading] = useState(false);
+
   const [familyId, setFamilyId] = useState<string | null>(null);
   const [monRole, setMonRole] = useState("");
   const [monPrenomUser, setMonPrenomUser] = useState("");
   const [membres, setMembres] = useState<FamilyMemberProfile[]>([]);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
-  const [showInviteBlock, setShowInviteBlock] = useState(false);
-  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [inviteCopied, setInviteCopied] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
 
-  const [notifPermission, setNotifPermission] = useState<string>("default");
-  const [pushEnabled, setPushEnabled] = useState(false);
-  const [pushLoading, setPushLoading] = useState(false);
-  const [autoNightMode, setAutoNightMode] = useState(false);
+  const [deleteStep, setDeleteStep] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
-  function showToast(message: string) {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 2000);
-  }
+  const timezone =
+    typeof Intl !== "undefined"
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : "—";
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  const applySettings = useCallback((data: UserSettings) => {
+    setSettings(mergeUserSettings(getDefaultUserSettings(), data));
+  }, []);
+
+  const persist = useCallback(
+    async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
+      if (!userId) return;
+      const supabase = createSupabaseClient();
+      const updated = await saveUserSetting(
+        supabase,
+        userId,
+        babyId,
+        key,
+        value,
+        settings
+      );
+      setSettings(updated);
+    },
+    [userId, babyId, settings]
+  );
 
   const syncPushState = useCallback(async () => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
@@ -154,14 +239,13 @@ export default function ReglagesPage() {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setAutoNightMode(localStorage.getItem(AUTO_NIGHT_MODE_KEY) === "true");
-    }
+    const local = loadSettingsFromLocalStorage();
+    if (local) applySettings(local);
     void syncPushState();
-  }, [syncPushState]);
+  }, [applySettings, syncPushState]);
 
   useEffect(() => {
-    async function load() {
+    async function init() {
       const supabase = createSupabaseClient();
       const {
         data: { user },
@@ -180,69 +264,74 @@ export default function ReglagesPage() {
         .eq("id", user.id)
         .single();
 
-      if (!profile?.family_id) {
-        setLoading(false);
-        return;
-      }
+      let resolvedBabyId: string | null = null;
+      if (profile?.family_id) {
+        setFamilyId(profile.family_id);
+        setMonRole(profile.role ?? "");
+        setMonPrenomUser(
+          profile.prenom?.trim() ||
+            profile.prenom_maman ||
+            profile.prenom_papa ||
+            ""
+        );
 
-      setFamilyId(profile.family_id);
-      setMonRole(profile.role ?? "");
-      setMonPrenomUser(
-        profile.prenom?.trim() ||
-          (profile.role === "papa"
-            ? profile.prenom_papa
-            : profile.prenom_maman) ||
-          profile.prenom_maman ||
-          profile.prenom_papa ||
-          ""
-      );
-
-      const expectedInviteCode = generateInviteCodeFromFamilyId(profile.family_id);
-      const { data: familyRow } = await supabase
-        .from("families")
-        .select("invite_code")
-        .eq("id", profile.family_id)
-        .maybeSingle();
-
-      if (familyRow?.invite_code === expectedInviteCode) {
-        setInviteCode(familyRow.invite_code);
-      } else {
-        const { data: updated } = await supabase
+        const expectedInviteCode = generateInviteCodeFromFamilyId(
+          profile.family_id
+        );
+        const { data: familyRow } = await supabase
           .from("families")
-          .update({ invite_code: expectedInviteCode })
-          .eq("id", profile.family_id)
           .select("invite_code")
+          .eq("id", profile.family_id)
           .maybeSingle();
-        setInviteCode(updated?.invite_code ?? expectedInviteCode);
+
+        if (familyRow?.invite_code === expectedInviteCode) {
+          setInviteCode(familyRow.invite_code);
+        } else {
+          const { data: updated } = await supabase
+            .from("families")
+            .update({ invite_code: expectedInviteCode })
+            .eq("id", profile.family_id)
+            .select("invite_code")
+            .maybeSingle();
+          setInviteCode(updated?.invite_code ?? expectedInviteCode);
+        }
+
+        const { data: membresData } = await supabase
+          .from("profiles")
+          .select("id, prenom, prenom_maman, prenom_papa, role, last_seen")
+          .eq("family_id", profile.family_id);
+        if (membresData) setMembres(membresData as FamilyMemberProfile[]);
+
+        const { data: baby } = await supabase
+          .from("babies")
+          .select("id")
+          .eq("family_id", profile.family_id)
+          .maybeSingle();
+        resolvedBabyId = baby?.id ?? null;
+        setBabyId(resolvedBabyId);
       }
 
-      const { data: membresData } = await supabase
-        .from("profiles")
-        .select("id, prenom, prenom_maman, prenom_papa, role, last_seen")
-        .eq("family_id", profile.family_id);
-
-      if (membresData) setMembres(membresData as FamilyMemberProfile[]);
+      const loaded = await loadUserSettings(supabase, user.id);
+      applySettings({ ...loaded, baby_id: resolvedBabyId });
       setLoading(false);
     }
 
-    void load();
-  }, [router]);
+    void init();
+  }, [router, applySettings]);
 
   useEffect(() => {
     if (!familyId || !userId) return;
-
     const supabase = createSupabaseClient();
     type PresencePayload = { user_id: string; online_at: string };
 
-    const presenceChannel = supabase
-      .channel(`family-presence-${familyId}`)
+    const channel = supabase
+      .channel(`family-presence-reglages-${familyId}`)
       .on("presence", { event: "sync" }, () => {
-        const state = presenceChannel.presenceState<PresencePayload>();
-        setOnlineUserIds(extractOnlineUserIds(state));
+        setOnlineUserIds(extractOnlineUserIds(channel.presenceState<PresencePayload>()));
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await presenceChannel.track({
+          await channel.track({
             user_id: userId,
             online_at: new Date().toISOString(),
           });
@@ -250,24 +339,12 @@ export default function ReglagesPage() {
       });
 
     return () => {
-      void supabase.removeChannel(presenceChannel);
-      setOnlineUserIds(new Set());
+      void supabase.removeChannel(channel);
     };
   }, [familyId, userId]);
 
-  async function handleCopyInviteCode() {
-    if (!inviteCode) return;
-    try {
-      await navigator.clipboard.writeText(inviteCode);
-      setInviteCopied(true);
-      setTimeout(() => setInviteCopied(false), 2000);
-    } catch {
-      showToast("Impossible de copier le code");
-    }
-  }
-
-  async function enablePushNotifications() {
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
+  async function enablePush() {
+    if (!userId || !babyId) return;
     setPushLoading(true);
     try {
       const permission = await Notification.requestPermission();
@@ -291,35 +368,13 @@ export default function ReglagesPage() {
         return;
       }
 
-      const supabase = createSupabaseClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("family_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.family_id) return;
-
-      const { data: baby } = await supabase
-        .from("babies")
-        .select("id")
-        .eq("family_id", profile.family_id)
-        .single();
-
-      if (!baby) return;
-
       await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subscription: subscription.toJSON(),
-          baby_id: baby.id,
-          user_id: user.id,
+          baby_id: babyId,
+          user_id: userId,
         }),
       });
 
@@ -330,23 +385,81 @@ export default function ReglagesPage() {
     }
   }
 
-  async function handlePushToggle(enabled: boolean) {
-    if (enabled) {
-      await enablePushNotifications();
-      return;
+  async function disablePush() {
+    if (!userId) return;
+    setPushLoading(true);
+    try {
+      if ("serviceWorker" in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration("/sw.js");
+        const sub = await reg?.pushManager.getSubscription();
+        await sub?.unsubscribe();
+      }
+      const supabase = createSupabaseClient();
+      await supabase.from("push_subscriptions").delete().eq("user_id", userId);
+      setPushEnabled(false);
+      showToast("Rappels biberon désactivés");
+    } finally {
+      setPushLoading(false);
     }
-
-    if ("serviceWorker" in navigator) {
-      const reg = await navigator.serviceWorker.getRegistration("/sw.js");
-      const sub = await reg?.pushManager.getSubscription();
-      await sub?.unsubscribe();
-    }
-    setPushEnabled(false);
   }
 
-  function handleAutoNightToggle(enabled: boolean) {
-    setAutoNightMode(enabled);
-    localStorage.setItem(AUTO_NIGHT_MODE_KEY, enabled ? "true" : "false");
+  async function handlePushToggle(enabled: boolean) {
+    if (enabled) await enablePush();
+    else await disablePush();
+  }
+
+  async function handleExportData() {
+    if (!babyId) return;
+    setExporting(true);
+    try {
+      const events = await fetchEventsByBabyId(babyId);
+      const blob = new Blob([JSON.stringify(events, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bebebou-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("Export téléchargé ✅");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleDeleteAllData() {
+    if (deleteStep === 0) {
+      setDeleteStep(1);
+      return;
+    }
+    if (!babyId) return;
+    const supabase = createSupabaseClient();
+    const { error } = await supabase.from("events").delete().eq("baby_id", babyId);
+    if (error) {
+      showToast("Erreur lors de la suppression");
+      setDeleteStep(0);
+      return;
+    }
+    showToast("Données supprimées");
+    setDeleteStep(0);
+  }
+
+  async function handleSignOut() {
+    const supabase = createSupabaseClient();
+    await supabase.auth.signOut();
+    router.push("/");
+  }
+
+  async function handleCopyInvite() {
+    if (!inviteCode) return;
+    try {
+      await navigator.clipboard.writeText(inviteCode);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    } catch {
+      showToast("Impossible de copier");
+    }
   }
 
   if (loading) {
@@ -360,7 +473,7 @@ export default function ReglagesPage() {
           justifyContent: "center",
         }}
       >
-        <p style={{ fontSize: 14, color: "#8B7FA0" }}>Chargement...</p>
+        <p style={{ color: "#8B7FA0", fontSize: 14 }}>Chargement...</p>
       </main>
     );
   }
@@ -370,31 +483,47 @@ export default function ReglagesPage() {
       style={{
         backgroundColor: "#FDF8F2",
         minHeight: "100vh",
-        padding: "32px 16px 40px",
+        padding: "24px 16px 40px",
         boxSizing: "border-box",
       }}
     >
-      {toastMessage && (
+      {toast && (
         <div
           style={{
             position: "fixed",
             bottom: 100,
             left: "50%",
             transform: "translateX(-50%)",
-            backgroundColor: "#4CAF50",
+            backgroundColor: "#4A3F5C",
             color: "white",
             borderRadius: 20,
-            padding: "10px 20px",
-            fontSize: 14,
+            padding: "10px 18px",
+            fontSize: 13,
             fontWeight: 600,
             zIndex: 200,
           }}
         >
-          {toastMessage}
+          {toast}
         </div>
       )}
 
-      <div style={{ width: "100%", maxWidth: 420, margin: "0 auto" }}>
+      <div style={{ maxWidth: 420, margin: "0 auto" }}>
+        <button
+          type="button"
+          onClick={() => router.push("/profil")}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#8B7FA0",
+            fontSize: 14,
+            cursor: "pointer",
+            padding: 0,
+            marginBottom: 16,
+          }}
+        >
+          ← Retour
+        </button>
+
         <h1
           style={{
             fontSize: 22,
@@ -407,322 +536,397 @@ export default function ReglagesPage() {
           ⚙️ Réglages
         </h1>
 
-        <section style={sectionCardStyle()}>
-          <h2 style={sectionTitleStyle()}>🔔 Notifications</h2>
+        {/* SECTION 1 — Notifications */}
+        <section style={sectionCard}>
+          <h2 style={sectionTitle}>🔔 Notifications</h2>
 
           {notifPermission === "denied" ? (
-            <p style={{ fontSize: 13, color: "#8B7FA0", margin: 0 }}>
+            <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 12px" }}>
               Désactivé dans les réglages iOS
             </p>
           ) : notifPermission === "default" ? (
             <button
               type="button"
-              onClick={() => void enablePushNotifications()}
+              onClick={() => void enablePush()}
               disabled={pushLoading}
               style={{
                 width: "100%",
-                padding: "12px 16px",
-                borderRadius: 16,
+                padding: "12px",
+                borderRadius: 14,
+                border: "none",
                 backgroundColor: "#E8406A",
                 color: "white",
-                border: "none",
-                fontSize: 14,
                 fontWeight: 700,
-                cursor: pushLoading ? "not-allowed" : "pointer",
+                cursor: "pointer",
+                marginBottom: 12,
               }}
             >
-              {pushLoading ? "Activation..." : "Activer les rappels biberon"}
+              Activer les rappels biberon
             </button>
           ) : (
             <ToggleRow
               label="Rappels biberon"
-              description="Notification 15 min avant le prochain biberon"
               checked={pushEnabled}
               disabled={pushLoading}
-              onChange={(value) => void handlePushToggle(value)}
+              onChange={(v) => void handlePushToggle(v)}
             />
           )}
 
-          <div style={{ borderBottom: "none" }}>
-            <ToggleRow
-              label="Mode nuit automatique"
-              description="Entre 21h et 7h → pas d'alertes"
-              checked={autoNightMode}
-              onChange={handleAutoNightToggle}
+          {pushEnabled && notifPermission === "granted" && (
+            <>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "8px 0 0" }}>
+                Délai rappel biberon
+              </p>
+              <ChipGroup
+                options={[
+                  { label: "10 min", value: 10 },
+                  { label: "15 min", value: 15 },
+                  { label: "20 min", value: 20 },
+                  { label: "30 min", value: 30 },
+                ]}
+                value={settings.notif_delay_minutes ?? 15}
+                onChange={(v) => void persist("notif_delay_minutes", v)}
+              />
+            </>
+          )}
+
+          <ToggleRow
+            label="Alertes couche"
+            description="Alerte si aucune couche depuis X heures"
+            checked={settings.couche_alert_enabled !== false}
+            onChange={(v) => void persist("couche_alert_enabled", v)}
+          />
+          {settings.couche_alert_enabled !== false && (
+            <ChipGroup
+              options={[
+                { label: "3h", value: 3 },
+                { label: "4h", value: 4 },
+                { label: "5h", value: 5 },
+                { label: "6h", value: 6 },
+              ]}
+              value={settings.couche_alert_hours ?? 4}
+              onChange={(v) => void persist("couche_alert_hours", v)}
             />
-          </div>
+          )}
+
+          <ToggleRow
+            label="Notifications co-parent"
+            description="Toast quand un co-parent enregistre un événement"
+            checked={settings.coparent_notif !== false}
+            onChange={(v) => void persist("coparent_notif", v)}
+          />
+
+          <ToggleRow
+            label="Mode nuit automatique"
+            description="Pas d'alertes entre début et fin de nuit"
+            checked={Boolean(settings.nuit_auto_enabled)}
+            onChange={(v) => void persist("nuit_auto_enabled", v)}
+            border={false}
+          />
+          {settings.nuit_auto_enabled && (
+            <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+              <label style={{ flex: 1, fontSize: 13, color: "#4A3F5C" }}>
+                Début nuit
+                <input
+                  type="time"
+                  value={settings.nuit_auto_debut ?? "21:00"}
+                  onChange={(e) => void persist("nuit_auto_debut", e.target.value)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    marginTop: 6,
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1.5px solid #F0E8F5",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+              <label style={{ flex: 1, fontSize: 13, color: "#4A3F5C" }}>
+                Fin nuit
+                <input
+                  type="time"
+                  value={settings.nuit_auto_fin ?? "07:00"}
+                  onChange={(e) => void persist("nuit_auto_fin", e.target.value)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    marginTop: 6,
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1.5px solid #F0E8F5",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+            </div>
+          )}
         </section>
 
-        <section style={sectionCardStyle()}>
-          <h2 style={sectionTitleStyle()}>🎨 Affichage</h2>
+        {/* SECTION 2 — Biberon */}
+        <section style={sectionCard}>
+          <h2 style={sectionTitle}>🍼 Biberon</h2>
           <ToggleRow
-            label="Mode sombre"
-            description="Bientôt disponible"
-            checked={false}
-            disabled
-            onChange={() => undefined}
+            label="Intervalle automatique selon l'âge"
+            checked={settings.biberon_intervalle_auto !== false}
+            onChange={(v) => void persist("biberon_intervalle_auto", v)}
+          />
+          {settings.biberon_intervalle_auto === false && (
+            <ChipGroup
+              options={[
+                { label: "2h", value: 120 },
+                { label: "2h30", value: 150 },
+                { label: "3h", value: 180 },
+                { label: "3h30", value: 210 },
+                { label: "4h", value: 240 },
+                { label: "4h30", value: 270 },
+                { label: "5h", value: 300 },
+              ]}
+              value={settings.biberon_intervalle_minutes ?? 210}
+              onChange={(v) => void persist("biberon_intervalle_minutes", v)}
+            />
+          )}
+          <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "16px 0 0" }}>
+            Quantité par défaut
+          </p>
+          <ChipGroup
+            options={[
+              { label: "100ml", value: 100 },
+              { label: "120ml", value: 120 },
+              { label: "150ml", value: 150 },
+              { label: "180ml", value: 180 },
+              { label: "200ml", value: 200 },
+              { label: "210ml", value: 210 },
+              { label: "240ml", value: 240 },
+            ]}
+            value={settings.biberon_quantite_defaut ?? 150}
+            onChange={(v) => void persist("biberon_quantite_defaut", v)}
           />
         </section>
 
-        {familyId && (
-          <section style={sectionCardStyle()}>
-            <h2 style={sectionTitleStyle()}>👨‍👩‍👧 Ma famille</h2>
-
-            {(() => {
-              const roleInfo = getRoleLabel(monRole);
-              return (
-                <div
-                  style={{
-                    backgroundColor: `${roleInfo.color}33`,
-                    borderRadius: 16,
-                    padding: 16,
-                    marginBottom: 20,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: "50%",
-                      backgroundColor: roleInfo.color,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 32,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {roleInfo.emoji}
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: 16,
-                        fontWeight: 700,
-                        color: "#4A3F5C",
-                        margin: "0 0 6px",
-                      }}
-                    >
-                      {monPrenomUser || "Moi"}
-                    </p>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        backgroundColor: roleInfo.color,
-                        borderRadius: 20,
-                        padding: "4px 12px",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#4A3F5C",
-                      }}
-                    >
-                      {roleInfo.emoji} {roleInfo.label}
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            <p
+        {/* SECTION 3 — Sommeil */}
+        <section style={sectionCard}>
+          <h2 style={sectionTitle}>🌙 Sommeil</h2>
+          <label style={{ display: "block", fontSize: 13, color: "#4A3F5C", marginBottom: 12 }}>
+            Heure de coucher habituelle
+            <input
+              type="time"
+              value={settings.heure_coucher_defaut ?? "21:00"}
+              onChange={(e) => void persist("heure_coucher_defaut", e.target.value)}
               style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: "#8B7FA0",
-                textTransform: "uppercase",
-                letterSpacing: 1,
-                margin: "0 0 12px",
+                display: "block",
+                width: "100%",
+                marginTop: 6,
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1.5px solid #F0E8F5",
+                fontSize: 14,
+                boxSizing: "border-box",
               }}
-            >
-              Membres connectés
-            </p>
+            />
+          </label>
+          <label style={{ display: "block", fontSize: 13, color: "#4A3F5C", marginBottom: 12 }}>
+            Heure de réveil habituelle
+            <input
+              type="time"
+              value={settings.heure_reveil_defaut ?? "07:00"}
+              onChange={(e) => void persist("heure_reveil_defaut", e.target.value)}
+              style={{
+                display: "block",
+                width: "100%",
+                marginTop: 6,
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1.5px solid #F0E8F5",
+                fontSize: 14,
+                boxSizing: "border-box",
+              }}
+            />
+          </label>
+          <ToggleRow
+            label="Alerte sieste longue"
+            checked={Boolean(settings.sieste_alerte_enabled)}
+            onChange={(v) => void persist("sieste_alerte_enabled", v)}
+            border={false}
+          />
+          {settings.sieste_alerte_enabled && (
+            <ChipGroup
+              options={[
+                { label: "1h30", value: 90 },
+                { label: "2h", value: 120 },
+                { label: "2h30", value: 150 },
+                { label: "3h", value: 180 },
+              ]}
+              value={settings.sieste_alerte_minutes ?? 120}
+              onChange={(v) => void persist("sieste_alerte_minutes", v)}
+            />
+          )}
+        </section>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {membres
-                .filter((m) => m.id !== userId)
-                .map((membre) => {
-                  const roleInfo = getRoleLabel(membre.role);
-                  const prenom = getMemberPrenom(membre);
-                  const isOnline = onlineUserIds.has(membre.id);
-                  return (
-                    <div
-                      key={membre.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        padding: "12px 14px",
-                        borderRadius: 14,
-                        border: "1px solid #F0E8F5",
-                        backgroundColor: "#FDF8F2",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: "50%",
-                          backgroundColor: roleInfo.color,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 22,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {roleInfo.emoji}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p
-                          style={{
-                            fontSize: 15,
-                            fontWeight: 600,
-                            color: "#4A3F5C",
-                            margin: "0 0 4px",
-                          }}
-                        >
-                          {prenom}
-                        </p>
-                        <p
-                          style={{
-                            fontSize: 12,
-                            color: isOnline ? "#4CAF50" : "#8B7FA0",
-                            margin: 0,
-                          }}
-                        >
-                          {isOnline
-                            ? "🟢 En ligne"
-                            : "⚫ " + formatLastSeen(membre.last_seen, false)}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
+        {/* SECTION 4 — Bébé */}
+        <section style={sectionCard}>
+          <h2 style={sectionTitle}>👶 Bébé</h2>
+          <p style={{ fontSize: 13, fontWeight: 600, color: "#4A3F5C", margin: "0 0 8px" }}>
+            Unité poids
+          </p>
+          <ChipGroup
+            options={[
+              { label: "kg", value: "kg" as const },
+              { label: "g", value: "g" as const },
+            ]}
+            value={settings.unite_poids ?? "kg"}
+            onChange={(v) => void persist("unite_poids", v)}
+          />
+          <p style={{ fontSize: 13, color: "#8B7FA0", margin: "16px 0 0" }}>
+            Fuseau horaire : <strong style={{ color: "#4A3F5C" }}>{timezone}</strong>
+          </p>
+        </section>
 
-              {membres.filter((m) => m.id !== userId).length === 0 && (
-                <p style={{ fontSize: 13, color: "#8B7FA0", margin: 0 }}>
-                  Tu es le seul membre pour l&apos;instant.
+        {/* SECTION 5 — Famille */}
+        {familyId && (
+          <section style={sectionCard}>
+            <h2 style={sectionTitle}>👨‍👩‍👧 Ma famille</h2>
+            {inviteCode && (
+              <div style={{ textAlign: "center", marginBottom: 20 }}>
+                <p style={{ fontSize: 12, color: "#8B7FA0", margin: "0 0 8px" }}>
+                  Code famille
                 </p>
-              )}
-            </div>
-
-            {membres.length < 5 && (
-              <button
-                type="button"
-                onClick={() => setShowInviteBlock((v) => !v)}
-                style={{
-                  width: "100%",
-                  marginTop: 16,
-                  padding: 14,
-                  borderRadius: 14,
-                  backgroundColor: "white",
-                  border: "1.5px solid #E8406A",
-                  color: "#E8406A",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                ➕ Inviter un co-parent
-              </button>
-            )}
-
-            {showInviteBlock && inviteCode && (
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 16,
-                  borderRadius: 14,
-                  backgroundColor: "#FDF8F2",
-                  border: "1px solid #F0E8F5",
-                }}
-              >
                 <p
                   style={{
-                    fontSize: 13,
-                    color: "#8B7FA0",
-                    margin: "0 0 8px",
+                    fontSize: 32,
+                    fontWeight: 800,
+                    letterSpacing: 6,
+                    color: "#4A3F5C",
+                    margin: "0 0 12px",
                   }}
                 >
-                  Partage ce code avec ta famille :
+                  {inviteCode}
                 </p>
-                <div
+                <button
+                  type="button"
+                  onClick={() => void handleCopyInvite()}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
+                    padding: "10px 20px",
+                    borderRadius: 20,
+                    border: "none",
+                    backgroundColor: "#E8406A",
+                    color: "white",
+                    fontWeight: 600,
+                    cursor: "pointer",
                   }}
                 >
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: 24,
-                      fontWeight: 800,
-                      letterSpacing: 4,
-                      color: "#4A3F5C",
-                      textAlign: "center",
-                    }}
-                  >
-                    {inviteCode}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyInviteCode()}
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: 12,
-                      backgroundColor: "#E8406A",
-                      color: "white",
-                      border: "none",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {inviteCopied ? "Copié ✓" : "Copier"}
-                  </button>
-                </div>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "#8B7FA0",
-                    margin: "10px 0 0",
-                    textAlign: "center",
-                  }}
-                >
-                  Rejoindre sur{" "}
-                  <button
-                    type="button"
-                    onClick={() => router.push("/rejoindre")}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#E8406A",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      padding: 0,
-                      textDecoration: "underline",
-                    }}
-                  >
-                    /rejoindre
-                  </button>
-                </p>
+                  {inviteCopied ? "Copié ✓" : "Copier le code"}
+                </button>
               </div>
             )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {membres.map((membre) => {
+                const roleInfo = getRoleLabel(membre.role);
+                const prenom = getMemberPrenom(membre);
+                const isOnline = onlineUserIds.has(membre.id);
+                const isMe = membre.id === userId;
+                return (
+                  <div
+                    key={membre.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "12px 14px",
+                      borderRadius: 14,
+                      border: "1px solid #F0E8F5",
+                      backgroundColor: "#FDF8F2",
+                    }}
+                  >
+                    <span style={{ fontSize: 22 }}>{roleInfo.emoji}</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontWeight: 600, color: "#4A3F5C" }}>
+                        {prenom}
+                        {isMe ? " (vous)" : ""}
+                      </p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "#8B7FA0" }}>
+                        {roleInfo.label} · {isOnline ? "🟢 En ligne" : "⚫ " + formatLastSeen(membre.last_seen, false)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </section>
         )}
 
-        <section style={sectionCardStyle()}>
-          <h2 style={sectionTitleStyle()}>ℹ️ À propos</h2>
+        {/* SECTION 6 — Confidentialité */}
+        <section style={sectionCard}>
+          <h2 style={sectionTitle}>🔒 Confidentialité</h2>
+          <button
+            type="button"
+            onClick={() => void handleExportData()}
+            disabled={exporting || !babyId}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              borderRadius: 14,
+              border: "1.5px solid #F0E8F5",
+              backgroundColor: "white",
+              color: "#4A3F5C",
+              fontWeight: 600,
+              cursor: "pointer",
+              marginBottom: 10,
+            }}
+          >
+            📤 Exporter mes données
+          </button>
+          {deleteStep === 1 && (
+            <p style={{ fontSize: 13, color: "#C03060", margin: "0 0 10px" }}>
+              Êtes-vous sûr ?
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => void handleDeleteAllData()}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              borderRadius: 14,
+              border: "1.5px solid #FFE0E8",
+              backgroundColor: deleteStep === 1 ? "#E8406A" : "#FFF0F5",
+              color: deleteStep === 1 ? "white" : "#E8406A",
+              fontWeight: 600,
+              cursor: "pointer",
+              marginBottom: 10,
+            }}
+          >
+            {deleteStep === 0
+              ? "🗑️ Supprimer toutes mes données"
+              : "Confirmer la suppression"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              borderRadius: 16,
+              border: "1px solid #FFE0E8",
+              backgroundColor: "#FFF0F5",
+              color: "#E8406A",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            🚪 Se déconnecter
+          </button>
+        </section>
+
+        {/* SECTION 7 — À propos */}
+        <section style={sectionCard}>
+          <h2 style={sectionTitle}>ℹ️ À propos</h2>
           <p style={{ fontSize: 14, color: "#4A3F5C", margin: "0 0 12px" }}>
             Bebebou v1.0
           </p>
           <a
-            href="mailto:contact@monbebebou.fr"
+            href="mailto:mahfoud.benlakehal@gmail.com"
             style={{
               display: "block",
               fontSize: 14,
@@ -734,21 +938,16 @@ export default function ReglagesPage() {
           >
             Nous contacter
           </a>
-          <button
-            type="button"
-            onClick={() => showToast("Politique de confidentialité — bientôt")}
+          <Link
+            href="/confidentialite"
             style={{
-              background: "none",
-              border: "none",
-              padding: 0,
               fontSize: 14,
               color: "#8B7FA0",
-              cursor: "pointer",
-              textAlign: "left",
+              textDecoration: "none",
             }}
           >
             Politique de confidentialité
-          </button>
+          </Link>
         </section>
       </div>
     </main>
