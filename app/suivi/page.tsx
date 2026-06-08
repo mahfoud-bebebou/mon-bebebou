@@ -399,7 +399,7 @@ function SuiviPageContent() {
   }, [babyId]);
 
   useEffect(() => {
-    async function loadBaby() {
+    async function init() {
       const supabase = createSupabaseClient();
       const {
         data: { user },
@@ -427,17 +427,17 @@ function SuiviPageContent() {
 
       const { data: baby } = await supabase
         .from("babies")
-        .select("id, prenom, name")
+        .select("id, prenom")
         .eq("family_id", profile.family_id)
         .single();
 
       if (baby) {
         setBabyId(baby.id);
-        setBabyPrenom(baby.prenom ?? baby.name ?? null);
+        setBabyPrenom(baby.prenom ?? null);
       }
     }
 
-    void loadBaby();
+    void init();
   }, []);
 
   const showToast = useCallback(

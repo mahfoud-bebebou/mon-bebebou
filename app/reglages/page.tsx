@@ -415,81 +415,87 @@ export default function ReglagesPage() {
   }, [familyId, userId]);
 
   async function toggleNotifications() {
-    if (typeof window === "undefined" || !("Notification" in window)) {
-      alert("Les notifications ne sont pas supportées sur cet appareil");
-      return;
-    }
-    if (!userId) return;
+    if (typeof window === "undefined") return;
 
-    if (Notification.permission === "denied") {
+    const isPWA = window.matchMedia("(display-mode: standalone)").matches;
+
+    if (!isPWA) {
       alert(
-        "Les notifications sont bloquées.\n\n" +
-          "Pour les activer :\n" +
-          "1. Réglages iPhone\n" +
-          "2. Notifications\n" +
-          "3. Bebebou\n" +
-          '4. Activer "Autoriser les notifications"'
+        "Ouvre les Réglages depuis l'icône Bébébou sur ton écran d'accueil"
       );
       return;
     }
 
-    setPushLoading(true);
+    if (!("Notification" in window) || !("PushManager" in window)) {
+      alert("Les notifications push ne sont pas supportées sur cet appareil");
+      return;
+    }
+
+    if (!userId) return;
+
+    if (notifEnabled) {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+      await fetch("/api/push/subscribe", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      setNotifEnabled(false);
+      await saveSettings("notif_enabled", false);
+      return;
+    }
+
+    const perm =
+      Notification.permission === "granted"
+        ? "granted"
+        : await Notification.requestPermission();
+
+    setNotifDenied(perm === "denied");
+
+    if (perm !== "granted") {
+      alert(
+        "Active les notifications dans Réglages iOS → Notifications → Bébébou"
+      );
+      return;
+    }
+
+    if (!babyId) {
+      alert("Profil bébé introuvable");
+      return;
+    }
+
     try {
-      if (Notification.permission === "granted") {
-        if ("serviceWorker" in navigator) {
-          const reg = await navigator.serviceWorker.ready;
-          const sub = await reg.pushManager.getSubscription();
-          if (sub) {
-            await sub.unsubscribe();
-            await fetch("/api/push/subscribe", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ user_id: userId }),
-            });
-          }
-        }
-        setNotifEnabled(false);
-        await saveSettings("notif_enabled", false);
-        showToast("Rappels biberon désactivés");
-        return;
-      }
+      await navigator.serviceWorker.register("/sw.js");
+      const reg = await navigator.serviceWorker.ready;
 
-      const permission = await Notification.requestPermission();
-      setNotifDenied(permission === "denied");
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) await existing.unsubscribe();
 
-      if (permission === "granted") {
-        if (!babyId) {
-          showToast("Profil bébé introuvable");
-          return;
-        }
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
+      });
 
-        await navigator.serviceWorker.register("/sw.js");
-        const reg = await navigator.serviceWorker.ready;
+      const res = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: sub.toJSON(),
+          baby_id: babyId,
+          user_id: userId,
+        }),
+      });
 
-        const existing = await reg.pushManager.getSubscription();
-        const sub =
-          existing ||
-          (await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
-          }));
-
-        await fetch("/api/push/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            subscription: sub.toJSON(),
-            baby_id: babyId,
-            user_id: userId,
-          }),
-        });
-
+      if (res.ok) {
         setNotifEnabled(true);
         await saveSettings("notif_enabled", true);
-        showToast("Rappels biberon activés ✅");
+        alert("✅ Rappels biberon activés !");
       }
-    } finally {
-      setPushLoading(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert("Erreur: " + message);
     }
   }
 
