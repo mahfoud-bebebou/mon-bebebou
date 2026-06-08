@@ -248,9 +248,17 @@ export default function ReglagesPage() {
 
       if (Notification.permission === "granted") {
         if ("serviceWorker" in navigator) {
+          console.log("VAPID key:", process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
+          console.log("SW ready:", "serviceWorker" in navigator);
+          console.log("PushManager:", "PushManager" in window);
+          console.log("Notification permission:", Notification.permission);
+
           await navigator.serviceWorker.register("/sw.js");
           const reg = await navigator.serviceWorker.ready;
+          console.log("Registration:", reg);
           const sub = await reg.pushManager.getSubscription();
+          console.log("Existing subscription:", sub);
+
           if (sub) {
             setNotifEnabled(true);
             await saveSettings("notif_enabled", true);
@@ -258,13 +266,15 @@ export default function ReglagesPage() {
             try {
               const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
               if (!vapidKey) {
+                console.error("Subscribe failed: VAPID key missing");
                 setNotifEnabled(false);
                 return;
               }
               const newSub = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
-                applicationServerKey: vapidKey,
+                applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
               });
+              console.log("New subscription:", newSub);
               await fetch("/api/push/subscribe", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -277,7 +287,7 @@ export default function ReglagesPage() {
               setNotifEnabled(true);
               await saveSettings("notif_enabled", true);
             } catch (err) {
-              console.error("Subscribe error:", err);
+              console.error("Subscribe failed:", err);
               setNotifEnabled(false);
             }
           }
