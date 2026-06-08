@@ -193,6 +193,21 @@ function isValidCategorieId(value: string | null): value is CategorieId {
   return CATEGORIES.some((c) => c.id === value);
 }
 
+function getEventSortTime(event: BebebouEvent): number {
+  if (event.type === "nuit") {
+    const meta = parseJsonNote<NuitSommeilMeta>(event.note);
+    const heureCoucher = meta?.heure_coucher;
+    if (heureCoucher) {
+      const [h, m] = heureCoucher.split(":");
+      const d = new Date(event.created_at);
+      d.setHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
+      if (parseInt(h, 10) >= 20) d.setDate(d.getDate() - 1);
+      return d.getTime();
+    }
+  }
+  return new Date(event.created_at).getTime();
+}
+
 function eventReferenceDate(event: BebebouEvent): Date {
   return new Date(event.created_at);
 }
@@ -406,10 +421,7 @@ function SuiviPageContent() {
     () =>
       filteredEvents
         .filter((e) => matchesCategory(e, categorieActive))
-        .sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ),
+        .sort((a, b) => getEventSortTime(b) - getEventSortTime(a)),
     [filteredEvents, categorieActive]
   );
 
@@ -1350,45 +1362,40 @@ function SuiviPageContent() {
         </div>
 
         <div
-          className="suivi-category-scroll"
           style={{
             display: "flex",
             gap: 8,
             overflowX: "auto",
             paddingBottom: 8,
-            marginBottom: 20,
-            msOverflowStyle: "none",
+            marginBottom: 16,
             scrollbarWidth: "none",
+            msOverflowStyle: "none",
           }}
+          className="suivi-category-scroll"
         >
-          {CATEGORIES.map((cat) => {
-            const active = categorieActive === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setCategorieActive(cat.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  whiteSpace: "nowrap",
-                  borderRadius: 20,
-                  padding: "6px 14px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  border: active ? "none" : "1px solid #F0E8F5",
-                  backgroundColor: active ? "#E8406A" : "white",
-                  color: active ? "white" : "#8B7FA0",
-                  flexShrink: 0,
-                }}
-              >
-                <span>{cat.emoji}</span>
-                <span>{cat.label}</span>
-              </button>
-            );
-          })}
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setCategorieActive(cat.id)}
+              style={{
+                backgroundColor:
+                  categorieActive === cat.id ? "#E8406A" : "white",
+                color: categorieActive === cat.id ? "white" : "#8B7FA0",
+                border:
+                  categorieActive === cat.id ? "none" : "1.5px solid #F0E8F5",
+                borderRadius: 20,
+                padding: "6px 14px",
+                fontSize: 13,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              {cat.emoji} {cat.label}
+            </button>
+          ))}
         </div>
 
         <style jsx global>{`
