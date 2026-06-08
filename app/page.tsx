@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { supabase } from "@/lib/supabase/client";
 import {
   formatTimeShort,
   getCardSubtitle,
@@ -185,13 +185,6 @@ type AuthenticatedBaby = {
   type_lait?: string | null;
   intolerances?: Intolerance[] | null;
 };
-
-function createSupabaseClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-}
 
 function syncLegacyBabyLocalStorage(baby: DemoBaby) {
   if (typeof window === "undefined") return;
@@ -370,7 +363,6 @@ function HomeSkeleton() {
 
 export default function Home() {
   const router = useRouter();
-  const supabaseClient = createSupabaseClient();
   const [events, setEvents] = useState<BebebouEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -618,7 +610,7 @@ export default function Home() {
   }
 
   async function fetchEventsByBabyId(babyId: string): Promise<BebebouEvent[]> {
-    const { data, error } = await supabaseClient
+    const { data, error } = await supabase
       .from("events")
       .select("*")
       .eq("baby_id", babyId)
@@ -641,7 +633,7 @@ export default function Home() {
     try {
       const {
         data: { user },
-      } = await supabaseClient.auth.getUser();
+      } = await supabase.auth.getUser();
 
       if (!user) return null;
 
@@ -649,7 +641,7 @@ export default function Home() {
       resetVisitorBabyStates();
       setDemoSessionId("");
 
-      const { data: profile, error: profileError } = await supabaseClient
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", user.id)
@@ -679,19 +671,19 @@ export default function Home() {
           ""
       );
 
-      await supabaseClient
+      await supabase
         .from("profiles")
         .update({ last_seen: new Date().toISOString() })
         .eq("id", user.id);
 
-      const { data: membresData } = await supabaseClient
+      const { data: membresData } = await supabase
         .from("profiles")
         .select("id, prenom, prenom_maman, prenom_papa, role, last_seen")
         .eq("family_id", profile.family_id);
 
       if (membresData) setFamilyMembers(membresData as FamilyMemberProfile[]);
 
-      const { data: baby, error: babyError } = await supabaseClient
+      const { data: baby, error: babyError } = await supabase
         .from("babies")
         .select("*")
         .eq("family_id", profile.family_id)
@@ -737,7 +729,7 @@ export default function Home() {
 
   async function syncModeNuitToBaby(state: ModeNuitState | null) {
     if (!baby?.id) return;
-    const { error } = await supabaseClient
+    const { error } = await supabase
       .from("babies")
       .update({ mode_nuit: state })
       .eq("id", baby.id);
@@ -822,7 +814,7 @@ export default function Home() {
       try {
         const {
           data: { user },
-        } = await supabaseClient.auth.getUser();
+        } = await supabase.auth.getUser();
 
         if (user) {
           await loadAuthenticatedData();
@@ -844,7 +836,7 @@ export default function Home() {
       setError(null);
       const {
         data: { user },
-      } = await supabaseClient.auth.getUser();
+      } = await supabase.auth.getUser();
       if (!user) return;
       if (!baby?.id) return;
 
@@ -869,7 +861,7 @@ export default function Home() {
 
     const currentUserId = userScopeId;
 
-    const channel = supabaseClient
+    const channel = supabase
       .channel(`baby-events-${baby.id}`)
       .on(
         "postgres_changes",
@@ -935,7 +927,7 @@ export default function Home() {
       .subscribe();
 
     return () => {
-      void supabaseClient.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   }, [baby?.id, isAuthenticated, userScopeId, showToast, familyMembers, userSettings]);
 
@@ -948,7 +940,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!isAuthenticated || !userScopeId) return;
-    void loadUserSettings(supabaseClient, userScopeId).then(setUserSettings);
+    void loadUserSettings(supabase, userScopeId).then(setUserSettings);
   }, [isAuthenticated, userScopeId]);
 
   useEffect(() => {
@@ -962,7 +954,7 @@ export default function Home() {
 
     type PresencePayload = { user_id: string; online_at: string };
 
-    const presenceChannel = supabaseClient
+    const presenceChannel = supabase
       .channel(`presence-${baby.id}`)
       .on("presence", { event: "sync" }, () => {
         const state = presenceChannel.presenceState<PresencePayload>();
@@ -978,7 +970,7 @@ export default function Home() {
       });
 
     return () => {
-      void supabaseClient.removeChannel(presenceChannel);
+      void supabase.removeChannel(presenceChannel);
       setOnlineUserIds(new Set());
     };
   }, [baby?.id, isAuthenticated, userScopeId]);
@@ -1262,7 +1254,7 @@ export default function Home() {
 
     const {
       data: { user },
-    } = await supabaseClient.auth.getUser();
+    } = await supabase.auth.getUser();
 
     if (!user) {
       setSaving(false);
@@ -1281,7 +1273,7 @@ export default function Home() {
 
     console.log("Saving event for baby:", babyRecord.id);
 
-    const { data, error: insertError } = await supabaseClient
+    const { data, error: insertError } = await supabase
       .from("events")
       .insert(row)
       .select()
@@ -1343,7 +1335,7 @@ export default function Home() {
       try {
         const {
           data: { user },
-        } = await supabaseClient.auth.getUser();
+        } = await supabase.auth.getUser();
         let babyRecord = baby;
         if (!babyRecord?.id) {
           babyRecord = await loadAuthenticatedData();
@@ -1733,7 +1725,7 @@ export default function Home() {
 
   async function handleSignOut() {
     setAvatarMenuOpen(false);
-    await supabaseClient.auth.signOut();
+    await supabase.auth.signOut();
     setIsAuthenticated(false);
     setUserEmail(null);
     setActiveModal(null);
