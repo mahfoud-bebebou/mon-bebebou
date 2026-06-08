@@ -233,11 +233,56 @@ export default function ReglagesPage() {
   );
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      setNotifEnabled(Notification.permission === "granted");
+    const checkNotifStatus = async () => {
+      if (typeof window === "undefined") return;
+      if (!("Notification" in window)) return;
+      if (!userId || !babyId) return;
+
       setNotifDenied(Notification.permission === "denied");
-    }
-  }, []);
+
+      if (Notification.permission === "granted") {
+        if ("serviceWorker" in navigator) {
+          await navigator.serviceWorker.register("/sw.js");
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            setNotifEnabled(true);
+            await saveSettings("notif_enabled", true);
+          } else {
+            try {
+              const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+              if (!vapidKey) {
+                setNotifEnabled(false);
+                return;
+              }
+              const newSub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: vapidKey,
+              });
+              await fetch("/api/push/subscribe", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  subscription: newSub.toJSON(),
+                  baby_id: babyId,
+                  user_id: userId,
+                }),
+              });
+              setNotifEnabled(true);
+              await saveSettings("notif_enabled", true);
+            } catch (err) {
+              console.error("Subscribe error:", err);
+              setNotifEnabled(false);
+            }
+          }
+        }
+      } else {
+        setNotifEnabled(false);
+      }
+    };
+
+    void checkNotifStatus();
+  }, [userId, babyId]);
 
   useEffect(() => {
     const local = loadSettingsFromLocalStorage();
