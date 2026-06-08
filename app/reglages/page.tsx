@@ -727,6 +727,27 @@ export default function ReglagesPage() {
               </label>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = "/test-push";
+            }}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              backgroundColor: "#F0E8F5",
+              color: "#4A3F5C",
+              border: "none",
+              borderRadius: 12,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+              marginTop: 12,
+            }}
+          >
+            🧪 Tester les notifications push
+          </button>
         </section>
 
         {/* SECTION 2 — Biberon */}
