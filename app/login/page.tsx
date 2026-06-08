@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -10,6 +10,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const emailInput = document.querySelector(
+      'input[type="email"]'
+    ) as HTMLInputElement;
+    const passwordInput = document.querySelector(
+      'input[type="password"]'
+    ) as HTMLInputElement;
+    if (emailInput?.value) setEmail(emailInput.value);
+    if (passwordInput?.value) setPassword(passwordInput.value);
+  }, []);
+
   async function handleSignIn() {
     setLoading(true);
     setError(null);
