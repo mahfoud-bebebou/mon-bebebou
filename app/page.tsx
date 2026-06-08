@@ -456,6 +456,7 @@ export default function Home() {
   const [myRole, setMyRole] = useState("");
   const [myPrenom, setMyPrenom] = useState("");
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  const [showNotifBanner, setShowNotifBanner] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
   const [userScopeId, setUserScopeId] = useState("");
@@ -1067,6 +1068,31 @@ export default function Home() {
     const interval = setInterval(() => setNightUiTick((t) => t + 1), 60000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "default") return;
+    if (localStorage.getItem("notif_dismissed") === "true") return;
+    setShowNotifBanner(true);
+  }, []);
+
+  async function activerNotifications() {
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      new Notification("🍼 Mon Bébébou", {
+        body: "Les rappels biberon sont activés ✅",
+        icon: "/logo-icon-192.png",
+      });
+      setShowNotifBanner(false);
+    } else if (permission === "denied") {
+      setShowNotifBanner(false);
+    }
+  }
+
+  function dismissNotifBanner() {
+    localStorage.setItem("notif_dismissed", "true");
+    setShowNotifBanner(false);
+  }
 
   const lastBiberon = events.find((e) => e.type === "biberon") ?? null;
 
@@ -2067,6 +2093,76 @@ export default function Home() {
           }}
         />
       </header>
+
+      {showNotifBanner && (
+        <div
+          style={{
+            maxWidth: 448,
+            margin: "0 auto",
+            padding: "0 16px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#FFF8E7",
+              border: "1px solid #FFD700",
+              borderRadius: 12,
+              padding: "12px 16px",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: 12,
+            }}
+          >
+            <span style={{ fontSize: 20 }}>🔔</span>
+            <p
+              style={{
+                flex: 1,
+                margin: 0,
+                fontSize: 13,
+                color: "#4A3F5C",
+                fontWeight: 600,
+              }}
+            >
+              Activer les rappels biberon
+            </p>
+            <button
+              type="button"
+              onClick={activerNotifications}
+              style={{
+                backgroundColor: "#E8406A",
+                color: "white",
+                borderRadius: 20,
+                padding: "6px 14px",
+                fontSize: 12,
+                fontWeight: 700,
+                border: "none",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              Activer →
+            </button>
+            <button
+              type="button"
+              onClick={dismissNotifBanner}
+              aria-label="Fermer"
+              style={{
+                background: "none",
+                border: "none",
+                color: "#8B7FA0",
+                fontSize: 18,
+                lineHeight: 1,
+                cursor: "pointer",
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       <div
         style={{

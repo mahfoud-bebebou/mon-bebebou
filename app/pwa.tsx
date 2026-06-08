@@ -8,14 +8,6 @@ export default function PWAInstaller() {
         .register('/sw.js')
         .then(reg => {
           console.log('SW registered:', reg)
-
-          // Demande permission notifications
-          if ('Notification' in window &&
-              Notification.permission === 'default') {
-            Notification.requestPermission().then(permission => {
-              console.log('Notification permission:', permission)
-            })
-          }
         })
     }
   }, [])
