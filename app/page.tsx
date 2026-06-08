@@ -456,7 +456,8 @@ export default function Home() {
   const [myRole, setMyRole] = useState("");
   const [myPrenom, setMyPrenom] = useState("");
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
-  const [showNotifBanner, setShowNotifBanner] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<string>("default");
+  const [notifDismissed, setNotifDismissed] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
   const [userScopeId, setUserScopeId] = useState("");
@@ -1070,28 +1071,29 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission !== "default") return;
-    if (localStorage.getItem("notif_dismissed") === "true") return;
-    setShowNotifBanner(true);
+    // Vérifie côté client uniquement
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifPermission(Notification.permission);
+    }
+    if (localStorage.getItem("notif_dismissed") === "true") {
+      setNotifDismissed(true);
+    }
   }, []);
 
   async function activerNotifications() {
     const permission = await Notification.requestPermission();
+    setNotifPermission(permission);
     if (permission === "granted") {
       new Notification("🍼 Mon Bébébou", {
         body: "Les rappels biberon sont activés ✅",
         icon: "/logo-icon-192.png",
       });
-      setShowNotifBanner(false);
-    } else if (permission === "denied") {
-      setShowNotifBanner(false);
     }
   }
 
   function dismissNotifBanner() {
     localStorage.setItem("notif_dismissed", "true");
-    setShowNotifBanner(false);
+    setNotifDismissed(true);
   }
 
   const lastBiberon = events.find((e) => e.type === "biberon") ?? null;
@@ -1892,6 +1894,14 @@ export default function Home() {
   const displayBabyInfo =
     showHeaderBaby || showPersonalData ? babyInfo : "votre bébé";
   const displayBabyName = showPersonalData ? sommeilPrenom : "votre bébé";
+
+  const showNotifBanner =
+    isAuthenticated &&
+    notifPermission === "default" &&
+    !notifDismissed &&
+    typeof window !== "undefined" &&
+    "Notification" in window &&
+    "serviceWorker" in navigator;
 
   return (
     <main className="min-h-screen" style={{ backgroundColor: "#FDF8F2" }}>
