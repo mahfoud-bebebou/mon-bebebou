@@ -31,19 +31,32 @@ export default function TestPush() {
     addLog('PushManager in window: ' + ('PushManager' in window))
     addLog('Permission: ' + Notification.permission)
 
+    if (Notification.permission !== 'granted') {
+      addLog('Demande de permission...')
+      const perm = await Notification.requestPermission()
+      addLog('Permission après demande: ' + perm)
+      if (perm !== 'granted') {
+        addLog('ERREUR: Permission refusée')
+        return
+      }
+    }
+
     try {
       const reg = await navigator.serviceWorker.ready
       addLog('SW ready ✅')
 
-      const sub = await reg.pushManager.getSubscription()
-      addLog('Existing sub: ' + (sub ? '✅ oui' : '❌ non'))
+      const existing = await reg.pushManager.getSubscription()
+      if (existing) {
+        await existing.unsubscribe()
+        addLog('Ancien abonnement supprimé')
+      }
 
       const newSub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_KEY)
       })
-      addLog('New sub créé ✅')
-      addLog('Endpoint: ' + newSub.endpoint.slice(0, 50) + '...')
+      addLog('Abonnement créé ✅')
+      addLog('Endpoint: ' + newSub.endpoint.slice(0, 60) + '...')
 
       const res = await fetch('/api/push/subscribe', {
         method: 'POST',
@@ -51,13 +64,15 @@ export default function TestPush() {
         body: JSON.stringify({
           subscription: newSub.toJSON(),
           baby_id: 'cf31ec10-ef6e-4b8f-96b4-1737823d4f44',
-          user_id: 'd1562a1a-0a59-4095-869f-example'
+          user_id: 'd1562a1a-0a59-4095-8696-263b7f0a369c'
         })
       })
-      addLog('API response: ' + res.status)
-
-    } catch(err: any) {
-      addLog('ERREUR: ' + err.message)
+      const json = await res.json()
+      addLog('API response: ' + res.status + ' ' + JSON.stringify(json))
+      addLog('🎉 SUCCÈS - Abonnement enregistré !')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      addLog('ERREUR: ' + message)
     }
   }
 
@@ -83,7 +98,11 @@ export default function TestPush() {
         {log.map((l, i) => (
           <div key={i} style={{
             padding: '4px 0',
-            color: l.includes('ERREUR') ? 'red' : l.includes('✅') ? 'green' : 'black'
+            color: l.includes('ERREUR')
+              ? 'red'
+              : l.includes('✅') || l.includes('SUCCÈS')
+                ? 'green'
+                : 'black'
           }}>
             {l}
           </div>
