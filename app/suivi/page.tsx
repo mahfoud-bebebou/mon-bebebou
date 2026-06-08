@@ -378,34 +378,8 @@ function SuiviPageContent() {
       setIsAuthenticated(true);
       setUserId(user.id);
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("family_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      let resolvedBabyId: string | null = null;
-      if (profile?.family_id) {
-        const { data: membresData } = await supabase
-          .from("profiles")
-          .select("id, prenom, prenom_maman, prenom_papa, role")
-          .eq("family_id", profile.family_id);
-        if (membresData) {
-          setFamilyMembers(membresData as FamilyMemberProfile[]);
-        }
-
-        const { data: baby } = await supabase
-          .from("babies")
-          .select("id, prenom, name")
-          .eq("family_id", profile.family_id)
-          .maybeSingle();
-        resolvedBabyId = baby?.id ?? null;
-        setBabyPrenom(baby?.prenom ?? baby?.name ?? null);
-      }
-      setBabyId(resolvedBabyId);
-
-      if (resolvedBabyId) {
-        const data = await fetchEventsByBabyId(resolvedBabyId);
+      if (babyId) {
+        const data = await fetchEventsByBabyId(babyId);
         setEvents(data);
       } else {
         setEvents([]);
@@ -422,6 +396,48 @@ function SuiviPageContent() {
     setDemoSessionId(sessionId);
     const data = await fetchDemoEvents(sessionId);
     setEvents(data);
+  }, [babyId]);
+
+  useEffect(() => {
+    async function loadBaby() {
+      const supabase = createSupabaseClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      setUserId(user.id);
+      setIsAuthenticated(true);
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("family_id")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile?.family_id) return;
+
+      const { data: membresData } = await supabase
+        .from("profiles")
+        .select("id, prenom, prenom_maman, prenom_papa, role")
+        .eq("family_id", profile.family_id);
+      if (membresData) {
+        setFamilyMembers(membresData as FamilyMemberProfile[]);
+      }
+
+      const { data: baby } = await supabase
+        .from("babies")
+        .select("id, prenom, name")
+        .eq("family_id", profile.family_id)
+        .single();
+
+      if (baby) {
+        setBabyId(baby.id);
+        setBabyPrenom(baby.prenom ?? baby.name ?? null);
+      }
+    }
+
+    void loadBaby();
   }, []);
 
   const showToast = useCallback(
@@ -842,14 +858,14 @@ function SuiviPageContent() {
       const note = serializeNote(meta);
 
       if (isAuthenticated) {
-        if (!userId) throw new Error("Utilisateur introuvable");
+        if (!userId || !babyId) throw new Error("Profil bébé introuvable");
         await insertEvent({
           type: sleepType,
           note,
           quantity: durationMin,
           created_at: createdAt,
           user_id: userId,
-          baby_id: babyId ?? undefined,
+          baby_id: babyId,
         });
       } else {
         const sessionId = demoSessionId || getOrCreateSessionId();
