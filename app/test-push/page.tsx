@@ -3,6 +3,19 @@ import { useState } from 'react'
 
 const VAPID_KEY = 'BFvgxcal0hATPPbDa3q0HVvFK_YymRVNknJQWFpIq04ac-8NgKKqZPrPTqBbYsqsDXyCcNqY2DWCN4wi-EEMMvw'
 
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4)
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
+
 export default function TestPush() {
   const [log, setLog] = useState<string[]>([])
 
@@ -27,7 +40,7 @@ export default function TestPush() {
 
       const newSub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: VAPID_KEY
+        applicationServerKey: urlBase64ToUint8Array(VAPID_KEY)
       })
       addLog('New sub créé ✅')
       addLog('Endpoint: ' + newSub.endpoint.slice(0, 50) + '...')
