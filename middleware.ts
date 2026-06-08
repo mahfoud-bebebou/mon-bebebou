@@ -1,33 +1,24 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
-  const res = NextResponse.next()
+export function middleware(request: NextRequest) {
+  // Bypass total pour toutes les routes API et assets
+  const pathname = request.nextUrl.pathname
 
-  // Ne jamais bloquer les routes API
-  if (request.nextUrl.pathname.startsWith('/api/')) {
-    return res
-  }
-
-  // Ne jamais bloquer les assets statiques
   if (
-    request.nextUrl.pathname.startsWith('/_next/') ||
-    request.nextUrl.pathname.startsWith('/logo') ||
-    request.nextUrl.pathname === '/sw.js' ||
-    request.nextUrl.pathname === '/manifest.json'
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/logo') ||
+    pathname === '/sw.js' ||
+    pathname === '/manifest.json' ||
+    pathname.includes('.')
   ) {
-    return res
+    return NextResponse.next()
   }
 
-  const supabase = createMiddlewareClient({ req: request, res })
-  await supabase.auth.getSession()
-
-  return res
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.png|.*\\.jpg|.*\\.svg|sw\\.js|manifest\\.json).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
