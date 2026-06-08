@@ -116,17 +116,6 @@ function eventsToday(events: BebebouEvent[]): BebebouEvent[] {
   return events.filter((e) => new Date(e.created_at) >= aujourdhuiDebut);
 }
 
-function isPipiCouche(event: BebebouEvent): boolean {
-  if (event.type !== "couche") return false;
-  const meta = parseCoucheMeta(event.note);
-  if (meta) return includesPipi(meta.type_couche);
-  return event.note === "pipi" || event.note === "les_deux";
-}
-
-function countPipiToday(events: BebebouEvent[]): number {
-  return eventsToday(events).filter(isPipiCouche).length;
-}
-
 export function parseCoucheMeta(note: string | null): CoucheMeta | null {
   if (!note) return null;
   const json = parseJsonNote<CoucheMeta>(note);
@@ -236,14 +225,6 @@ export function getCoucheDashboardAlerts(
   intolerances?: Intolerance[] | null
 ): CoucheAlert[] {
   const alerts: CoucheAlert[] = [];
-  const pipiCount = countPipiToday(events);
-
-  if (pipiCount < 6) {
-    alerts.push({
-      severity: "orange",
-      message: `💧 Seulement ${pipiCount} couche${pipiCount > 1 ? "s" : ""} mouillée${pipiCount > 1 ? "s" : ""} aujourd'hui — vérifie l'hydratation de ${prenom}`,
-    });
-  }
 
   if (hasWhiteGreyStoolsToday(events)) {
     alerts.push({

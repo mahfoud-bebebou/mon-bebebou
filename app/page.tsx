@@ -24,7 +24,6 @@ import {
   type DemoParcours,
   fetchDemoEvents,
   computeDemoBabyMetrics,
-  formatExactBabyAge,
   getAgeInDays,
   getDemoBaby,
   getOrCreateSessionId,
@@ -100,6 +99,7 @@ import {
   getCoucheModalAlerts,
   includesPipi,
   includesSelle,
+  parseCoucheMeta,
   SELLE_CONSISTANCE_OPTIONS,
   SELLE_COULEUR_OPTIONS,
   SELLE_ODEUR_OPTIONS,
@@ -250,17 +250,83 @@ function hasCompleteDemoProfile(sessionId: string): boolean {
   return loadLegacyBabyFromLocalStorage(sessionId) !== null;
 }
 
-function getBabyAge(birthdate: string): string {
-  const birth = new Date(birthdate);
-  const now = new Date();
-  const months =
-    (now.getFullYear() - birth.getFullYear()) * 12 +
-    (now.getMonth() - birth.getMonth());
+function getBabyAge(dateNaissance: string): string {
+  const birth = new Date(dateNaissance);
+  const maintenant = new Date();
+  const diffMs = maintenant.getTime() - birth.getTime();
+  const diffJours = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const mois = Math.floor(diffJours / 30.44);
+  const joursRestants = Math.floor(diffJours % 30.44);
 
-  if (months < 1) return "nouveau-né";
-  if (months < 24) return `${months} mois`;
-  const years = Math.floor(months / 12);
-  return `${years} an${years > 1 ? "s" : ""}`;
+  if (diffJours < 30) {
+    return `${diffJours} jour${diffJours > 1 ? "s" : ""}`;
+  }
+  if (mois < 12) {
+    if (mois === 0) {
+      return `${diffJours} jour${diffJours > 1 ? "s" : ""}`;
+    }
+    if (joursRestants > 0) {
+      return `${mois} mois et ${joursRestants} jour${joursRestants > 1 ? "s" : ""}`;
+    }
+    return `${mois} mois`;
+  }
+
+  const annees = Math.floor(mois / 12);
+  const moisRestantsAn = mois % 12;
+  if (annees === 1) {
+    return moisRestantsAn > 0 ? `1 an et ${moisRestantsAn} mois` : "1 an";
+  }
+  return moisRestantsAn > 0
+    ? `${annees} ans et ${moisRestantsAn} mois`
+    : `${annees} ans`;
+}
+
+function countPipiCouchesToday(events: BebebouEvent[]): number {
+  const aujourdhuiDebut = new Date();
+  aujourdhuiDebut.setHours(0, 0, 0, 0);
+  return events.filter((e) => {
+    if (e.type !== "couche") return false;
+    if (new Date(e.created_at) < aujourdhuiDebut) return false;
+    const meta = parseCoucheMeta(e.note);
+    if (meta) return includesPipi(meta.type_couche);
+    return e.note === "pipi" || e.note === "les_deux";
+  }).length;
+}
+
+function getCoucheBandeauMessage(
+  events: BebebouEvent[],
+  prenom: string
+): { severity: "orange"; message: string } | null {
+  const heureActuelle = new Date().getHours();
+  const heuresEveillees = heureActuelle - 6;
+  const couchesAttendues = Math.floor(heuresEveillees / 1.5);
+  const nbCouchesAujourdhui = countTodayEvents(events, "couche");
+  const pipiCount = countPipiCouchesToday(events);
+
+  if (heureActuelle >= 18) {
+    if (pipiCount >= 6) return null;
+    return {
+      severity: "orange",
+      message: `💧 Seulement ${pipiCount} couche${pipiCount > 1 ? "s" : ""} mouillée${pipiCount > 1 ? "s" : ""} aujourd'hui — vérifie l'hydratation de ${prenom}`,
+    };
+  }
+
+  if (heuresEveillees <= 0 || nbCouchesAujourdhui >= couchesAttendues) {
+    return null;
+  }
+
+  if (nbCouchesAujourdhui === 0) {
+    return {
+      severity: "orange",
+      message:
+        "Aucune couche enregistrée ce matin — pense à noter le prochain change",
+    };
+  }
+
+  return {
+    severity: "orange",
+    message: `Seulement ${nbCouchesAujourdhui} couche${nbCouchesAujourdhui > 1 ? "s" : ""} depuis ce matin — normale pour ${heuresEveillees}h d'éveil`,
+  };
 }
 
 function getEffectivePoids(baby: {
@@ -1685,6 +1751,11 @@ export default function Home() {
     ]
   );
 
+  const coucheBandeau = useMemo(() => {
+    if (!isAuthenticated || !feedingProfile?.prenom) return null;
+    return getCoucheBandeauMessage(events, feedingProfile.prenom);
+  }, [events, feedingProfile, isAuthenticated]);
+
   const coucheDashboardAlerts = useMemo(() => {
     if (!isAuthenticated) return [];
     if (!feedingProfile?.prenom) return [];
@@ -2024,10 +2095,8 @@ export default function Home() {
         </motion.div>
       </div>
 
-      {isAuthenticated &&
-        coucheDashboardAlerts.map((alert) => (
+      {isAuthenticated && coucheBandeau && (
         <div
-          key={alert.message}
           style={{
             maxWidth: 448,
             margin: "0 auto 12px",
@@ -2036,8 +2105,7 @@ export default function Home() {
         >
           <div
             style={{
-              backgroundColor:
-                alert.severity === "red" ? "#FF6B6B" : "#F5A623",
+              backgroundColor: "#F5A623",
               color: "white",
               borderRadius: 16,
               padding: "12px 16px",
@@ -2047,10 +2115,38 @@ export default function Home() {
               boxShadow: "0 4px 16px rgba(74,63,92,0.12)",
             }}
           >
-            {alert.message}
+            {coucheBandeau.message}
           </div>
         </div>
-      ))}
+      )}
+
+      {isAuthenticated &&
+        coucheDashboardAlerts.map((alert) => (
+          <div
+            key={alert.message}
+            style={{
+              maxWidth: 448,
+              margin: "0 auto 12px",
+              padding: "0 16px",
+            }}
+          >
+            <div
+              style={{
+                backgroundColor:
+                  alert.severity === "red" ? "#FF6B6B" : "#F5A623",
+                color: "white",
+                borderRadius: 16,
+                padding: "12px 16px",
+                fontSize: 14,
+                fontWeight: 600,
+                textAlign: "center",
+                boxShadow: "0 4px 16px rgba(74,63,92,0.12)",
+              }}
+            >
+              {alert.message}
+            </div>
+          </div>
+        ))}
 
       {isAuthenticated && showMorningPrompt && babyContext && (
         <div
@@ -2699,9 +2795,7 @@ export default function Home() {
                     >
                       {showPersonalData && feedingProfile?.prenom && feedingProfile.date_naissance
                         ? (() => {
-                            const age = formatExactBabyAge(
-                              feedingProfile.date_naissance
-                            );
+                            const age = getBabyAge(feedingProfile.date_naissance);
                             const base = `Recommandé pour ${feedingProfile.prenom} à ${age}`;
                             const poids =
                               feedingProfile.poids_actuel ??
@@ -2768,7 +2862,7 @@ export default function Home() {
                     }}
                   >
                     Tétée pour {feedingProfile.prenom} à{" "}
-                    {formatExactBabyAge(feedingProfile.date_naissance)}
+                    {getBabyAge(feedingProfile.date_naissance)}
                   </p>
                 )}
                 <p
