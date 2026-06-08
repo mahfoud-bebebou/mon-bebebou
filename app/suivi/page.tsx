@@ -473,7 +473,8 @@ function SuiviPageContent() {
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated || !userId) return;
+    // on laisse loadData s'exécuter même si isAuthenticated
+    // est encore false - la session sera vérifiée dans loadData
     void loadUserSettings(supabase, userId).then(setUserSettings);
   }, [isAuthenticated, userId]);
 
