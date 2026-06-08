@@ -7,6 +7,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (request.nextUrl.pathname.startsWith("/compte")) {
+    return NextResponse.redirect(new URL("/profil", request.url));
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });
@@ -43,16 +47,16 @@ export async function middleware(request: NextRequest) {
   const isRejoindre = pathname.startsWith("/rejoindre");
   const isOnboarding = pathname.startsWith("/onboarding");
   const isProfil = pathname.startsWith("/profil");
+  const isReglages = pathname.startsWith("/reglages");
   const isSuivi = pathname.startsWith("/suivi");
   const isChat = pathname.startsWith("/chat");
   const isApiChat = pathname.startsWith("/api/chat");
-  const isCompte = pathname.startsWith("/compte");
 
-  if (!user && isCompte) {
+  if (!user && isProfil) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (!user && isProfil) {
+  if (!user && isReglages) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

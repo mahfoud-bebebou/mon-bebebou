@@ -22,7 +22,7 @@ import {
   saveBabyAvatar,
   uploadAuthAvatar,
 } from '@/lib/avatar'
-import { fetchEvents as fetchEventsFromDb } from '@/lib/events'
+import { fetchEventsByBabyId } from '@/lib/events'
 import {
   INTOLERANCE_OPTIONS,
   TYPE_LAIT_OPTIONS,
@@ -31,14 +31,6 @@ import {
 } from '@/lib/couche'
 import { computeProfileStats, type ProfileStats } from '@/lib/profile-stats'
 import { RoleGrid } from '@/components/RoleGrid'
-import { getRoleLabel } from '@/lib/roles'
-import {
-  type FamilyMemberProfile,
-  extractOnlineUserIds,
-  formatLastSeen,
-  generateInviteCodeFromFamilyId,
-  getMemberPrenom,
-} from '@/lib/family'
 
 function createSupabaseClient() {
   return createBrowserClient(
@@ -239,15 +231,10 @@ export default function ProfilPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [draftSnapshot, setDraftSnapshot] = useState<ProfileSnapshot | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const [familyId, setFamilyId] = useState<string | null>(null)
   const [monRole, setMonRole] = useState('')
   const [monPrenomUser, setMonPrenomUser] = useState('')
-  const [membres, setMembres] = useState<FamilyMemberProfile[]>([])
-  const [inviteCode, setInviteCode] = useState<string | null>(null)
-  const [showInviteBlock, setShowInviteBlock] = useState(false)
-  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
-  const [inviteCopied, setInviteCopied] = useState(false)
+  const [showBabyDetails, setShowBabyDetails] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
 
   function showToast(message: string) {
     setToastMessage(message)
@@ -267,6 +254,7 @@ export default function ProfilPage() {
       monRole,
     })
     setFormError(null)
+    setShowBabyDetails(true)
     setIsEditing(true)
   }
 
@@ -292,6 +280,12 @@ export default function ProfilPage() {
     setTimeout(() => router.push('/'), 1000)
   }
 
+  async function handleSignOut() {
+    const supabaseClient = createSupabaseClient()
+    await supabaseClient.auth.signOut()
+    router.push('/')
+  }
+
   useEffect(() => {
     const saved = loadBabyAvatar()
     if (saved) setAvatarUrl(saved)
@@ -303,6 +297,7 @@ export default function ProfilPage() {
 
       setIsAuthenticated(true)
       setUserId(user.id)
+      setUserEmail(user.email ?? null)
       const saved = loadBabyAvatar()
       if (saved) {
         setAvatarUrl(saved)
@@ -323,7 +318,6 @@ export default function ProfilPage() {
         return
       }
 
-      setFamilyId(profile.family_id)
       setMonRole(profile.role ?? '')
       setMonPrenomUser(
         profile.prenom?.trim() ||
@@ -339,33 +333,6 @@ export default function ProfilPage() {
         .from('profiles')
         .update({ last_seen: new Date().toISOString() })
         .eq('id', user.id)
-
-      const expectedInviteCode = generateInviteCodeFromFamilyId(profile.family_id)
-
-      const { data: familyRow } = await supabaseClient
-        .from('families')
-        .select('invite_code')
-        .eq('id', profile.family_id)
-        .maybeSingle()
-
-      if (familyRow?.invite_code === expectedInviteCode) {
-        setInviteCode(familyRow.invite_code)
-      } else {
-        const { data: updated } = await supabaseClient
-          .from('families')
-          .update({ invite_code: expectedInviteCode })
-          .eq('id', profile.family_id)
-          .select('invite_code')
-          .maybeSingle()
-        setInviteCode(updated?.invite_code ?? expectedInviteCode)
-      }
-
-      const { data: membresData } = await supabaseClient
-        .from('profiles')
-        .select('id, prenom, prenom_maman, prenom_papa, role, last_seen')
-        .eq('family_id', profile.family_id)
-
-      if (membresData) setMembres(membresData as FamilyMemberProfile[])
 
       const { data: babyData, error: babyError } = await supabaseClient
         .from('babies')
@@ -406,7 +373,7 @@ export default function ProfilPage() {
       setTypeLait((record.type_lait as TypeLait) ?? '')
       setIntolerances(parseIntolerances(record.intolerances))
 
-      const events = await fetchEventsFromDb(user.id)
+      const events = await fetchEventsByBabyId(record.id)
       setStats(
         computeProfileStats(
           events,
@@ -434,44 +401,6 @@ export default function ProfilPage() {
 
     checkAuth()
   }, [router])
-
-  useEffect(() => {
-    if (!isAuthenticated || !familyId || !userId) return
-
-    const supabaseClient = createSupabaseClient()
-    type PresencePayload = { user_id: string; online_at: string }
-
-    const presenceChannel = supabaseClient
-      .channel(`family-presence-${familyId}`)
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState<PresencePayload>()
-        setOnlineUserIds(extractOnlineUserIds(state))
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await presenceChannel.track({
-            user_id: userId,
-            online_at: new Date().toISOString(),
-          })
-        }
-      })
-
-    return () => {
-      void supabaseClient.removeChannel(presenceChannel)
-      setOnlineUserIds(new Set())
-    }
-  }, [isAuthenticated, familyId, userId])
-
-  async function handleCopyInviteCode() {
-    if (!inviteCode) return
-    try {
-      await navigator.clipboard.writeText(inviteCode)
-      setInviteCopied(true)
-      setTimeout(() => setInviteCopied(false), 2000)
-    } catch {
-      showToast('Impossible de copier le code')
-    }
-  }
 
   function validate(): string | null {
     if (!prenom.trim()) return 'Le prénom est obligatoire.'
@@ -598,7 +527,7 @@ export default function ProfilPage() {
         }
       }
 
-      const events = await fetchEventsFromDb(userId!)
+      const events = await fetchEventsByBabyId(babyId)
       setStats(
         computeProfileStats(events, poidsActuelNum, poidsNaissanceNum)
       )
@@ -710,18 +639,6 @@ export default function ProfilPage() {
             marginBottom: 16,
           }}
         >
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 800,
-              color: '#4A3F5C',
-              textAlign: 'center',
-              margin: '0 0 16px',
-            }}
-          >
-            Profil bébé 👶
-          </h1>
-
           <div
             style={{
               display: 'flex',
@@ -774,6 +691,45 @@ export default function ProfilPage() {
             </p>
           )}
 
+          <button
+            type="button"
+            onClick={() => {
+              if (!isEditing) setShowBabyDetails((open) => !open)
+            }}
+            style={{
+              width: '100%',
+              backgroundColor: 'white',
+              borderRadius: 16,
+              padding: '16px 20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              border: '1px solid #F0E8F5',
+              cursor: isEditing ? 'default' : 'pointer',
+              marginBottom: showBabyDetails || isEditing ? 12 : 0,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: '#4A3F5C',
+              }}
+            >
+              👶 Profil de {prenom.trim() || 'bébé'}
+            </span>
+            <span style={{ fontSize: 14, color: '#8B7FA0' }}>
+              {showBabyDetails || isEditing ? '▲' : '▼'}
+            </span>
+          </button>
+
+          <div
+            style={{
+              maxHeight: showBabyDetails || isEditing ? 4000 : 0,
+              overflow: 'hidden',
+              transition: 'max-height 0.35s ease',
+            }}
+          >
           {!isEditing ? (
             <>
               <ReadField label="Prénom" value={prenom} />
@@ -1048,288 +1004,8 @@ export default function ProfilPage() {
               </div>
             </>
           )}
-        </div>
-
-        {isAuthenticated && familyId && !isEditing && (
-          <div
-            style={{
-              backgroundColor: 'white',
-              borderRadius: 24,
-              padding: 24,
-              boxShadow: '0 8px 32px rgba(74,63,92,0.10)',
-              marginBottom: 16,
-            }}
-          >
-            <h2
-              style={{
-                fontSize: 16,
-                fontWeight: 800,
-                color: '#4A3F5C',
-                margin: '0 0 20px',
-              }}
-            >
-              👨‍👩‍👧 Notre famille
-            </h2>
-
-            {(() => {
-              const roleInfo = getRoleLabel(monRole)
-              return (
-                <div
-                  style={{
-                    backgroundColor: `${roleInfo.color}33`,
-                    borderRadius: 16,
-                    padding: 16,
-                    marginBottom: 20,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: '50%',
-                      backgroundColor: roleInfo.color,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 32,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {roleInfo.emoji}
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: 16,
-                        fontWeight: 700,
-                        color: '#4A3F5C',
-                        margin: '0 0 6px',
-                      }}
-                    >
-                      {monPrenomUser || 'Moi'}
-                    </p>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        backgroundColor: roleInfo.color,
-                        borderRadius: 20,
-                        padding: '4px 12px',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: '#4A3F5C',
-                      }}
-                    >
-                      {roleInfo.emoji} {roleInfo.label}
-                    </span>
-                  </div>
-                </div>
-              )
-            })()}
-
-            <p
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: '#8B7FA0',
-                textTransform: 'uppercase',
-                letterSpacing: 1,
-                margin: '0 0 12px',
-              }}
-            >
-              Membres de la famille
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {membres
-                .filter((m) => m.id !== userId)
-                .map((membre) => {
-                  const roleInfo = getRoleLabel(membre.role)
-                  const prenom = getMemberPrenom(membre)
-                  const isOnline = onlineUserIds.has(membre.id)
-                  return (
-                    <div
-                      key={membre.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '12px 14px',
-                        borderRadius: 14,
-                        border: '1px solid #F0E8F5',
-                        backgroundColor: '#FDF8F2',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: '50%',
-                          backgroundColor: roleInfo.color,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 22,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {roleInfo.emoji}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p
-                          style={{
-                            fontSize: 15,
-                            fontWeight: 600,
-                            color: '#4A3F5C',
-                            margin: '0 0 4px',
-                          }}
-                        >
-                          {prenom}
-                        </p>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            backgroundColor: roleInfo.color,
-                            borderRadius: 20,
-                            padding: '2px 10px',
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: '#4A3F5C',
-                            marginBottom: 4,
-                          }}
-                        >
-                          {roleInfo.emoji} {roleInfo.label}
-                        </span>
-                        <p
-                          style={{
-                            fontSize: 12,
-                            color: isOnline ? '#4CAF50' : '#8B7FA0',
-                            margin: 0,
-                          }}
-                        >
-                          {isOnline ? '🟢 En ligne' : '⚫ ' + formatLastSeen(membre.last_seen, false)}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                })}
-
-              {membres.filter((m) => m.id !== userId).length === 0 && (
-                <p style={{ fontSize: 13, color: '#8B7FA0', margin: 0 }}>
-                  Tu es le seul membre pour l&apos;instant.
-                </p>
-              )}
-            </div>
-
-            {membres.length < 5 && (
-              <button
-                type="button"
-                onClick={() => setShowInviteBlock((v) => !v)}
-                style={{
-                  width: '100%',
-                  marginTop: 16,
-                  padding: 14,
-                  borderRadius: 14,
-                  backgroundColor: 'white',
-                  border: '1.5px solid #E8406A',
-                  color: '#E8406A',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                ➕ Inviter quelqu&apos;un
-              </button>
-            )}
-
-            {showInviteBlock && inviteCode && (
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 16,
-                  borderRadius: 14,
-                  backgroundColor: '#FDF8F2',
-                  border: '1px solid #F0E8F5',
-                }}
-              >
-                <p
-                  style={{
-                    fontSize: 13,
-                    color: '#8B7FA0',
-                    margin: '0 0 8px',
-                  }}
-                >
-                  Partage ce code avec ta famille :
-                </p>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}
-                >
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: 24,
-                      fontWeight: 800,
-                      letterSpacing: 4,
-                      color: '#4A3F5C',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {inviteCode}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleCopyInviteCode}
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: 12,
-                      backgroundColor: '#E8406A',
-                      color: 'white',
-                      border: 'none',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {inviteCopied ? 'Copié ✓' : 'Copier'}
-                  </button>
-                </div>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: '#8B7FA0',
-                    margin: '10px 0 0',
-                    textAlign: 'center',
-                  }}
-                >
-                  Ils pourront rejoindre sur{' '}
-                  <button
-                    type="button"
-                    onClick={() => router.push('/rejoindre')}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#E8406A',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      padding: 0,
-                      textDecoration: 'underline',
-                    }}
-                  >
-                    /rejoindre
-                  </button>
-                </p>
-              </div>
-            )}
           </div>
-        )}
+        </div>
 
         {/* Stats */}
         {!isAuthenticated ? (
@@ -1505,6 +1181,57 @@ export default function ProfilPage() {
             <WeeklyChart data={stats.weeklyBiberons} />
           </div>
         ) : null}
+
+        {isAuthenticated && (
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: 24,
+              padding: 24,
+              boxShadow: '0 8px 32px rgba(74,63,92,0.10)',
+              marginTop: 16,
+            }}
+          >
+            <h2
+              style={{
+                fontSize: 16,
+                fontWeight: 800,
+                color: '#4A3F5C',
+                margin: '0 0 12px',
+              }}
+            >
+              Mon compte
+            </h2>
+            {userEmail && (
+              <p
+                style={{
+                  fontSize: 13,
+                  color: '#8B7FA0',
+                  margin: '0 0 16px',
+                }}
+              >
+                {userEmail}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              style={{
+                backgroundColor: '#FFF0F5',
+                color: '#E8406A',
+                border: '1px solid #FFE0E8',
+                borderRadius: 16,
+                padding: '12px 16px',
+                width: '100%',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              🚪 Se déconnecter
+            </button>
+          </div>
+        )}
 
         {!isAuthenticated && (
           <div style={{ marginTop: 24 }}>

@@ -10,6 +10,7 @@ import {
   BarChart2,
   Home,
   MessageCircleHeart,
+  Settings,
   UserCircle,
   type LucideProps,
 } from "lucide-react";
@@ -220,11 +221,11 @@ export function BottomNav() {
 
   const accountTab: NavTab = isAuthenticated
     ? {
-        id: "compte",
-        href: "/compte",
-        label: "👤 Compte",
-        icon: UserCircle,
-        match: (p) => p.startsWith("/compte"),
+        id: "reglages",
+        href: "/reglages",
+        label: "⚙️ Réglages",
+        icon: Settings,
+        match: (p) => p.startsWith("/reglages"),
       }
     : {
         id: "login",
