@@ -11,7 +11,6 @@ import {
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
-  fetchEvents as fetchEventsFromDb,
   fetchEventsByBabyId,
   formatTimeShort,
   getCardSubtitle,
@@ -845,14 +844,10 @@ export default function Home() {
         data: { user },
       } = await supabaseClient.auth.getUser();
       if (!user) return;
+      if (!baby?.id) return;
 
-      if (baby?.id) {
-        const data = await fetchEventsByBabyId(baby.id);
-        setEvents(data);
-      } else {
-        const data = await fetchEventsFromDb(user.id);
-        setEvents(data);
-      }
+      const data = await fetchEventsByBabyId(baby.id);
+      setEvents(data);
     } catch (err) {
       console.error(err);
       setError("Impossible de charger les événements");

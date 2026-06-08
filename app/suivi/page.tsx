@@ -13,7 +13,7 @@ import {
 } from "@/lib/demo";
 import {
   deleteEvent,
-  fetchEvents as fetchEventsFromDb,
+  fetchEventsByBabyId,
   formatTimeShort,
   getEventEmoji,
   getEventLabel,
@@ -279,8 +279,6 @@ export default function SuiviPage() {
     if (user) {
       setIsAuthenticated(true);
       setUserId(user.id);
-      const data = await fetchEventsFromDb(user.id);
-      setEvents(data);
 
       const { data: profile } = await supabase
         .from("profiles")
@@ -288,15 +286,22 @@ export default function SuiviPage() {
         .eq("id", user.id)
         .maybeSingle();
 
+      let resolvedBabyId: string | null = null;
       if (profile?.family_id) {
         const { data: baby } = await supabase
           .from("babies")
           .select("id")
           .eq("family_id", profile.family_id)
           .maybeSingle();
-        setBabyId(baby?.id ?? null);
+        resolvedBabyId = baby?.id ?? null;
+      }
+      setBabyId(resolvedBabyId);
+
+      if (resolvedBabyId) {
+        const data = await fetchEventsByBabyId(resolvedBabyId);
+        setEvents(data);
       } else {
-        setBabyId(null);
+        setEvents([]);
       }
       return;
     }
