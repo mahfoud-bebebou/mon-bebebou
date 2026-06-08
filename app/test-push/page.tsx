@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 
-const VAPID_KEY = 'BFvgxcal0hATPPbDa3q0HVvFK_YymRVNknJQWFpIq04ac-8NgKKqZPrPTqBbYsqsDXyCcNqY2DWCN4wi-EEMMvw'
+const VAPID_KEY = 'VvbaxsFAW0BxLa61004fDHaU1fp2TYAXvOfp25URnkgbCf7jryzQyRWj7NFqwI4V-VMbbw4sv0_ceFwL08_3cA'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4)

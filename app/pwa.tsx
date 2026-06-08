@@ -1,8 +1,8 @@
 'use client'
 import { useEffect } from 'react'
 
-const VAPID_PUBLIC_KEY =
-  'BFvgxcal0hATPPbDa3q0HVvFK_YymRVNknJQWFpIq04ac-8NgKKqZPrPTqBbYsqsDXyCcNqY2DWCN4wi-EEMMvw'
+const VAPID_KEY =
+  'VvbaxsFAW0BxLa61004fDHaU1fp2TYAXvOfp25URnkgbCf7jryzQyRWj7NFqwI4V-VMbbw4sv0_ceFwL08_3cA'
 
 export default function PWAInstaller() {
   useEffect(() => {
@@ -21,7 +21,7 @@ export default function PWAInstaller() {
           existing ||
           (await reg.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: VAPID_PUBLIC_KEY,
+            applicationServerKey: VAPID_KEY,
           }))
 
         // Récupère user et baby depuis Supabase

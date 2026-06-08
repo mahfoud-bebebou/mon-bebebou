@@ -22,8 +22,8 @@ import {
   type UserSettings,
 } from "@/lib/user-settings";
 
-const VAPID_PUBLIC_KEY =
-  "BFvgxcal0hATPPbDa3q0HVvFK_YymRVNknJQWFpIq04ac-8NgKKqZPrPTqBbYsqsDXyCcNqY2DWCN4wi-EEMMvw";
+const VAPID_KEY =
+  "VvbaxsFAW0BxLa61004fDHaU1fp2TYAXvOfp25URnkgbCf7jryzQyRWj7NFqwI4V-VMbbw4sv0_ceFwL08_3cA";
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -264,7 +264,7 @@ export default function ReglagesPage() {
 
       if (Notification.permission === "granted") {
         if ("serviceWorker" in navigator) {
-          console.log("VAPID key:", VAPID_PUBLIC_KEY);
+          console.log("VAPID key:", VAPID_KEY);
           console.log("SW ready:", "serviceWorker" in navigator);
           console.log("PushManager:", "PushManager" in window);
           console.log("Notification permission:", Notification.permission);
@@ -282,7 +282,7 @@ export default function ReglagesPage() {
             try {
               const newSub = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+                applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
               });
               console.log("New subscription:", newSub);
               await fetch("/api/push/subscribe", {
@@ -471,7 +471,7 @@ export default function ReglagesPage() {
           existing ||
           (await reg.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+            applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
           }));
 
         await fetch("/api/push/subscribe", {
