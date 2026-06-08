@@ -130,6 +130,15 @@ const pleureSuggestions = [
   "Besoin de câlins 🤗",
 ];
 
+const NUIT_REVEIL_RAISON_OPTIONS = [
+  { id: "faim", label: "🍼 Faim" },
+  { id: "couche", label: "💩 Couche" },
+  { id: "douleur", label: "😣 Douleur" },
+  { id: "cauchemar", label: "😰 Cauchemar" },
+  { id: "calin", label: "🤗 Câlin" },
+  { id: "inconnu", label: "❓ Inconnu" },
+] as const;
+
 type ModalType =
   | "biberon"
   | "couche"
@@ -402,6 +411,7 @@ export default function Home() {
   const [nuitReveilsPrevus, setNuitReveilsPrevus] = useState(0);
   const [nuitLever, setNuitLever] = useState(toTimeInputValue());
   const [nuitReveilCount, setNuitReveilCount] = useState(0);
+  const [nuitReveilRaisons, setNuitReveilRaisons] = useState<string[][]>([]);
   const [coucheHeure, setCoucheHeure] = useState(() => getCurrentTimeValue());
   const [coucheType, setCoucheType] = useState<TypeCouche | null>(null);
   const [urineCouleur, setUrineCouleur] = useState("jaune_pale");
@@ -1242,8 +1252,31 @@ export default function Home() {
 
   function openSommeilNuitWake() {
     setNuitLever(toTimeInputValue());
-    setNuitReveilCount(modeNuitData?.nb_reveils_prevus ?? 0);
+    const count = modeNuitData?.nb_reveils_prevus ?? 0;
+    setNuitReveilCount(count);
+    setNuitReveilRaisons(Array.from({ length: count }, () => []));
     setActiveModal("sommeil_nuit_wake");
+  }
+
+  function handleNuitReveilCountChange(count: number) {
+    setNuitReveilCount(count);
+    setNuitReveilRaisons((prev) => {
+      const next = prev.slice(0, count);
+      while (next.length < count) next.push([]);
+      return next;
+    });
+  }
+
+  function toggleNuitReveilRaison(wakeIndex: number, raisonId: string) {
+    setNuitReveilRaisons((prev) => {
+      const next = prev.slice();
+      while (next.length <= wakeIndex) next.push([]);
+      const selected = next[wakeIndex] ?? [];
+      next[wakeIndex] = selected.includes(raisonId)
+        ? selected.filter((id) => id !== raisonId)
+        : [...selected, raisonId];
+      return next;
+    });
   }
 
   async function handleNuitWakeSubmit() {
@@ -1253,10 +1286,13 @@ export default function Home() {
 
     const coucher = modeNuitData.coucher ?? nuitCoucher;
     const durationMin = calcSleepMinutes(coucher, nuitLever);
-    const meta: SommeilMeta = {
+    const meta = {
+      heure_coucher: coucher,
+      heure_lever: nuitLever,
       heure_debut: coucher,
       heure_fin: nuitLever,
       nb_reveils: nuitReveilCount,
+      raisons_reveils: nuitReveilRaisons.slice(0, nuitReveilCount),
     };
     const leverDate = combineDateAndTime(new Date(), nuitLever);
     const analysis = getNightAnalysis(prenom, dateNaissance, {
@@ -3807,7 +3843,7 @@ export default function Home() {
             <button
               key={n}
               type="button"
-              onClick={() => setNuitReveilCount(n)}
+              onClick={() => handleNuitReveilCountChange(n)}
               style={{
                 flex: "1 1 14%",
                 minWidth: 44,
@@ -3825,6 +3861,48 @@ export default function Home() {
             </button>
           ))}
         </div>
+        {nuitReveilCount > 0 &&
+          Array.from({ length: nuitReveilCount }, (_, wakeIndex) => (
+            <div key={wakeIndex} style={{ marginBottom: 16 }}>
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#8B7FA0",
+                  margin: "0 0 8px",
+                }}
+              >
+                Raison du réveil {wakeIndex + 1}
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {NUIT_REVEIL_RAISON_OPTIONS.map((opt) => {
+                  const selected = (nuitReveilRaisons[wakeIndex] ?? []).includes(
+                    opt.id
+                  );
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => toggleNuitReveilRaison(wakeIndex, opt.id)}
+                      style={{
+                        borderRadius: 12,
+                        padding: "8px 12px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        border: selected
+                          ? "1.5px solid #E8406A"
+                          : "1.5px solid #F0E8F5",
+                        backgroundColor: selected ? "#E8406A" : "white",
+                        color: selected ? "white" : "#4A3F5C",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         <p style={{ fontSize: 14, color: "#8B7FA0", textAlign: "center", marginBottom: 20 }}>
           Durée : {formatDurationCompact(calcSleepMinutes(modeNuitData?.coucher ?? nuitCoucher, nuitLever))}
         </p>
