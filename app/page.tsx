@@ -370,6 +370,7 @@ function HomeSkeleton() {
 
 export default function Home() {
   const router = useRouter();
+  const supabaseClient = createSupabaseClient();
   const [events, setEvents] = useState<BebebouEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -617,7 +618,6 @@ export default function Home() {
   }
 
   async function fetchEventsByBabyId(babyId: string): Promise<BebebouEvent[]> {
-    const supabaseClient = createSupabaseClient();
     const { data, error } = await supabaseClient
       .from("events")
       .select("*")
@@ -639,7 +639,6 @@ export default function Home() {
 
   async function loadAuthenticatedData(): Promise<AuthenticatedBaby | null> {
     try {
-      const supabaseClient = createSupabaseClient();
       const {
         data: { user },
       } = await supabaseClient.auth.getUser();
@@ -738,7 +737,6 @@ export default function Home() {
 
   async function syncModeNuitToBaby(state: ModeNuitState | null) {
     if (!baby?.id) return;
-    const supabaseClient = createSupabaseClient();
     const { error } = await supabaseClient
       .from("babies")
       .update({ mode_nuit: state })
@@ -822,7 +820,6 @@ export default function Home() {
   useEffect(() => {
     async function init() {
       try {
-        const supabaseClient = createSupabaseClient();
         const {
           data: { user },
         } = await supabaseClient.auth.getUser();
@@ -845,7 +842,6 @@ export default function Home() {
   const fetchEvents = useCallback(async () => {
     try {
       setError(null);
-      const supabaseClient = createSupabaseClient();
       const {
         data: { user },
       } = await supabaseClient.auth.getUser();
@@ -871,7 +867,6 @@ export default function Home() {
   useEffect(() => {
     if (!isAuthenticated || !baby?.id || !userScopeId) return;
 
-    const supabaseClient = createSupabaseClient();
     const currentUserId = userScopeId;
 
     const channel = supabaseClient
@@ -953,7 +948,6 @@ export default function Home() {
 
   useEffect(() => {
     if (!isAuthenticated || !userScopeId) return;
-    const supabaseClient = createSupabaseClient();
     void loadUserSettings(supabaseClient, userScopeId).then(setUserSettings);
   }, [isAuthenticated, userScopeId]);
 
@@ -964,7 +958,6 @@ export default function Home() {
   useEffect(() => {
     if (!isAuthenticated || !baby?.id || !userScopeId) return;
 
-    const supabaseClient = createSupabaseClient();
     const currentUserId = userScopeId;
 
     type PresencePayload = { user_id: string; online_at: string };
@@ -1267,7 +1260,6 @@ export default function Home() {
       return false;
     }
 
-    const supabaseClient = createSupabaseClient();
     const {
       data: { user },
     } = await supabaseClient.auth.getUser();
@@ -1349,7 +1341,6 @@ export default function Home() {
 
     if (isAuthenticated) {
       try {
-        const supabaseClient = createSupabaseClient();
         const {
           data: { user },
         } = await supabaseClient.auth.getUser();
@@ -1742,7 +1733,6 @@ export default function Home() {
 
   async function handleSignOut() {
     setAvatarMenuOpen(false);
-    const supabaseClient = createSupabaseClient();
     await supabaseClient.auth.signOut();
     setIsAuthenticated(false);
     setUserEmail(null);
