@@ -70,6 +70,35 @@ const PLEURE_CAUSES: { id: PleureCause; label: string }[] = [
   { id: "inconnu", label: "❓ Inconnu" },
 ];
 
+const NUIT_REVEIL_RAISON_OPTIONS = [
+  { id: "faim", label: "🍼 Faim" },
+  { id: "couche", label: "💩 Couche" },
+  { id: "douleur", label: "😣 Douleur" },
+  { id: "cauchemar", label: "😰 Cauchemar" },
+  { id: "calin", label: "🤗 Câlin" },
+  { id: "inconnu", label: "❓ Inconnu" },
+] as const;
+
+type NuitSommeilMeta = SommeilMeta & {
+  heure_coucher?: string;
+  heure_lever?: string;
+  raisons_reveils?: unknown;
+};
+
+function normalizeReveilRaisons(raw: unknown, count: number): string[][] {
+  if (!Array.isArray(raw)) {
+    return Array.from({ length: count }, () => []);
+  }
+  return Array.from({ length: count }, (_, index) => {
+    const item = raw[index];
+    if (Array.isArray(item)) {
+      return item.filter((value): value is string => typeof value === "string");
+    }
+    if (typeof item === "string" && item) return [item];
+    return [];
+  });
+}
+
 const labelStyle = {
   fontSize: 13,
   fontWeight: 600,
@@ -227,6 +256,7 @@ export default function SuiviPage() {
   const [editSleepDebut, setEditSleepDebut] = useState("12:00");
   const [editSleepFin, setEditSleepFin] = useState("13:00");
   const [editReveils, setEditReveils] = useState(0);
+  const [editReveilRaisons, setEditReveilRaisons] = useState<string[][]>([]);
   const [editPleureDuration, setEditPleureDuration] = useState(5);
   const [editPleureCause, setEditPleureCause] = useState<PleureCause>("inconnu");
   const [saving, setSaving] = useState(false);
@@ -363,21 +393,35 @@ export default function SuiviPage() {
       }
       case "sieste":
       case "nuit": {
-        const meta = parseJsonNote<SommeilMeta>(event.note);
+        const meta = parseJsonNote<NuitSommeilMeta>(event.note);
         setEditSleepDebut(
-          parseSommeilTimeString(meta?.heure_debut, ref)
+          parseSommeilTimeString(
+            meta?.heure_debut ?? meta?.heure_coucher,
+            ref
+          )
         );
         setEditSleepFin(
           parseSommeilTimeString(
-            meta?.heure_fin,
+            meta?.heure_fin ?? meta?.heure_lever,
             buildSleepEndDateFromTimes(
               ref,
-              parseSommeilTimeString(meta?.heure_debut, ref),
-              parseSommeilTimeString(meta?.heure_fin, ref)
+              parseSommeilTimeString(
+                meta?.heure_debut ?? meta?.heure_coucher,
+                ref
+              ),
+              parseSommeilTimeString(meta?.heure_fin ?? meta?.heure_lever, ref)
             )
           )
         );
-        setEditReveils(meta?.nb_reveils ?? 0);
+        const reveils = meta?.nb_reveils ?? 0;
+        setEditReveils(reveils);
+        if (event.type === "nuit") {
+          setEditReveilRaisons(
+            normalizeReveilRaisons(meta?.raisons_reveils, reveils)
+          );
+        } else {
+          setEditReveilRaisons([]);
+        }
         break;
       }
       case "pleure": {
@@ -402,6 +446,27 @@ export default function SuiviPage() {
 
   function adjustPleureDuration(delta: number) {
     setEditPleureDuration((d) => Math.min(180, Math.max(1, d + delta)));
+  }
+
+  function handleEditReveilCountChange(count: number) {
+    setEditReveils(count);
+    setEditReveilRaisons((prev) => {
+      const next = prev.slice(0, count);
+      while (next.length < count) next.push([]);
+      return next;
+    });
+  }
+
+  function toggleEditReveilRaison(wakeIndex: number, raisonId: string) {
+    setEditReveilRaisons((prev) => {
+      const next = prev.slice();
+      while (next.length <= wakeIndex) next.push([]);
+      const selected = next[wakeIndex] ?? [];
+      next[wakeIndex] = selected.includes(raisonId)
+        ? selected.filter((id) => id !== raisonId)
+        : [...selected, raisonId];
+      return next;
+    });
   }
 
   function buildEditPayload(event: BebebouEvent): {
@@ -456,11 +521,17 @@ export default function SuiviPage() {
         };
       }
       case "nuit": {
+        const existingMeta =
+          parseJsonNote<NuitSommeilMeta>(event.note) ?? {};
         const durationMin = Math.max(1, editSleepDurationMin);
-        const meta: SommeilMeta = {
+        const meta = {
+          ...existingMeta,
           heure_debut: editSleepDebut,
           heure_fin: editSleepFin,
+          heure_coucher: editSleepDebut,
+          heure_lever: editSleepFin,
           nb_reveils: editReveils,
+          raisons_reveils: editReveilRaisons.slice(0, editReveils),
           duree_minutes: durationMin,
         };
         return {
@@ -800,7 +871,7 @@ export default function SuiviPage() {
                 <button
                   key={n}
                   type="button"
-                  onClick={() => setEditReveils(n)}
+                  onClick={() => handleEditReveilCountChange(n)}
                   style={{
                     ...choiceButtonStyle(editReveils === n),
                     flex: "1 1 14%",
@@ -811,6 +882,50 @@ export default function SuiviPage() {
                 </button>
               ))}
             </div>
+            {editReveils > 0 &&
+              Array.from({ length: editReveils }, (_, wakeIndex) => (
+                <div key={wakeIndex} style={{ marginBottom: 16 }}>
+                  <p
+                    style={{
+                      fontSize: 13,
+                      color: "#8B7FA0",
+                      margin: "0 0 8px",
+                    }}
+                  >
+                    Raison du réveil {wakeIndex + 1}
+                  </p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {NUIT_REVEIL_RAISON_OPTIONS.map((opt) => {
+                      const selected = (
+                        editReveilRaisons[wakeIndex] ?? []
+                      ).includes(opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() =>
+                            toggleEditReveilRaison(wakeIndex, opt.id)
+                          }
+                          style={{
+                            borderRadius: 12,
+                            padding: "8px 12px",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            border: selected
+                              ? "1.5px solid #E8406A"
+                              : "1.5px solid #F0E8F5",
+                            backgroundColor: selected ? "#E8406A" : "white",
+                            color: selected ? "white" : "#4A3F5C",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             <p
               style={{
                 fontSize: 14,
