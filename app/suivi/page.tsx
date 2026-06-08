@@ -9,13 +9,12 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { ModalSheet } from "@/components/ModalSheet";
 import { isToday } from "@/lib/dashboard-messages";
 import {
   deleteDemoEvent,
-  fetchDemoEvents,
   getOrCreateSessionId,
   insertDemoEvent,
   updateDemoEvent,
@@ -344,6 +343,7 @@ export default function SuiviPage() {
 }
 
 function SuiviPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createSupabaseClient();
   const [events, setEvents] = useState<BebebouEvent[]>([]);
@@ -386,19 +386,12 @@ function SuiviPageContent() {
     try {
       setLoading(true);
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user;
 
       if (!user) {
-        setIsAuthenticated(false);
-        setUserId(null);
-        setBabyId(null);
-        setBabyPrenom(null);
-        setFamilyMembers([]);
-        const sessionId = getOrCreateSessionId();
-        setDemoSessionId(sessionId);
-        const data = await fetchDemoEvents(sessionId);
-        setEvents(data);
+        router.push("/login");
         return;
       }
 
@@ -464,7 +457,7 @@ function SuiviPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, router]);
 
   const showToast = useCallback(
     (message: string, options?: { coparent?: boolean }) => {
