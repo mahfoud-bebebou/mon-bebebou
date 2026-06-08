@@ -103,8 +103,29 @@ export const SIGNES_ASSOCIES_OPTIONS = [
   { id: "pleurs_apres_biberon", label: "😢 Pleurs après biberon" },
 ] as const;
 
-const MS_24H = 24 * 60 * 60 * 1000;
 const MS_72H = 72 * 60 * 60 * 1000;
+
+function getTodayStart(): Date {
+  const aujourdhuiDebut = new Date();
+  aujourdhuiDebut.setHours(0, 0, 0, 0);
+  return aujourdhuiDebut;
+}
+
+function eventsToday(events: BebebouEvent[]): BebebouEvent[] {
+  const aujourdhuiDebut = getTodayStart();
+  return events.filter((e) => new Date(e.created_at) >= aujourdhuiDebut);
+}
+
+function isPipiCouche(event: BebebouEvent): boolean {
+  if (event.type !== "couche") return false;
+  const meta = parseCoucheMeta(event.note);
+  if (meta) return includesPipi(meta.type_couche);
+  return event.note === "pipi" || event.note === "les_deux";
+}
+
+function countPipiToday(events: BebebouEvent[]): number {
+  return eventsToday(events).filter(isPipiCouche).length;
+}
 
 export function parseCoucheMeta(note: string | null): CoucheMeta | null {
   if (!note) return null;
@@ -157,29 +178,16 @@ export function getCoucheModalAlerts(
   return alerts;
 }
 
-function eventsInLastMs(events: BebebouEvent[], ms: number): BebebouEvent[] {
-  const cutoff = Date.now() - ms;
-  return events.filter((e) => new Date(e.created_at).getTime() >= cutoff);
-}
-
-function countPipi24h(events: BebebouEvent[]): number {
-  return eventsInLastMs(events, MS_24H).filter((e) => {
-    if (e.type !== "couche") return false;
-    const meta = parseCoucheMeta(e.note);
-    return meta ? includesPipi(meta.type_couche) : e.note === "pipi";
-  }).length;
-}
-
-function hasWhiteGreyStools24h(events: BebebouEvent[]): boolean {
-  return eventsInLastMs(events, MS_24H).some((e) => {
+function hasWhiteGreyStoolsToday(events: BebebouEvent[]): boolean {
+  return eventsToday(events).some((e) => {
     if (e.type !== "couche") return false;
     const meta = parseCoucheMeta(e.note);
     return meta?.selle_couleur === "blanc_gris";
   });
 }
 
-function countLiquidStools24h(events: BebebouEvent[]): number {
-  return eventsInLastMs(events, MS_24H).filter((e) => {
+function countLiquidStoolsToday(events: BebebouEvent[]): number {
+  return eventsToday(events).filter((e) => {
     if (e.type !== "couche") return false;
     const meta = parseCoucheMeta(e.note);
     if (!meta || !includesSelle(meta.type_couche)) return false;
@@ -187,8 +195,8 @@ function countLiquidStools24h(events: BebebouEvent[]): number {
   }).length;
 }
 
-function countGreenFoamyStools24h(events: BebebouEvent[]): number {
-  return eventsInLastMs(events, MS_24H).filter((e) => {
+function countGreenFoamyStoolsToday(events: BebebouEvent[]): number {
+  return eventsToday(events).filter((e) => {
     if (e.type !== "couche") return false;
     const meta = parseCoucheMeta(e.note);
     if (!meta || !includesSelle(meta.type_couche)) return false;
@@ -228,7 +236,7 @@ export function getCoucheDashboardAlerts(
   intolerances?: Intolerance[] | null
 ): CoucheAlert[] {
   const alerts: CoucheAlert[] = [];
-  const pipiCount = countPipi24h(events);
+  const pipiCount = countPipiToday(events);
 
   if (pipiCount < 6) {
     alerts.push({
@@ -237,7 +245,7 @@ export function getCoucheDashboardAlerts(
     });
   }
 
-  if (hasWhiteGreyStools24h(events)) {
+  if (hasWhiteGreyStoolsToday(events)) {
     alerts.push({
       severity: "red",
       message: "🚨 Tu as noté des selles blanches — consulte un médecin",
@@ -262,7 +270,7 @@ export function getCoucheDashboardAlerts(
     }
   }
 
-  const liquidCount = countLiquidStools24h(events);
+  const liquidCount = countLiquidStoolsToday(events);
   if (liquidCount >= 3) {
     alerts.push({
       severity: "orange",
@@ -272,7 +280,7 @@ export function getCoucheDashboardAlerts(
 
   const watchSpecial =
     hasApLvWatch(intolerances) || typeLait === "lait_riz";
-  const greenFoamy = countGreenFoamyStools24h(events);
+  const greenFoamy = countGreenFoamyStoolsToday(events);
   if (watchSpecial && greenFoamy >= 2) {
     alerts.push({
       severity: "orange",

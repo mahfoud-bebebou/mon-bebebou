@@ -26,13 +26,9 @@ export type ContextualMessage = {
 };
 
 export function isToday(dateStr: string): boolean {
-  const d = new Date(dateStr);
-  const now = new Date();
-  return (
-    d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear()
-  );
+  const aujourdhuiDebut = new Date();
+  aujourdhuiDebut.setHours(0, 0, 0, 0);
+  return new Date(dateStr) >= aujourdhuiDebut;
 }
 
 export function countTodayEvents(

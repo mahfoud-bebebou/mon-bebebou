@@ -180,7 +180,12 @@ export function getCardSubtitle(
   type: EventType,
   events: BebebouEvent[]
 ): string {
-  const last = events.find((e) => e.type === type);
+  const aujourdhuiDebut = new Date();
+  aujourdhuiDebut.setHours(0, 0, 0, 0);
+  const todayEvents = events.filter(
+    (e) => new Date(e.created_at) >= aujourdhuiDebut
+  );
+  const last = todayEvents.find((e) => e.type === type);
   if (!last) return "Aucun enregistrement";
 
   const ago = timeAgo(new Date(last.created_at));

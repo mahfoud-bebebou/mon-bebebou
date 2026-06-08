@@ -56,7 +56,6 @@ import {
 import {
   countTodayEvents,
   getEventToastMessage,
-  isToday,
   type BabyMessageContext,
 } from "@/lib/dashboard-messages";
 import {
@@ -1596,7 +1595,11 @@ export default function Home() {
   );
 
   const todayEvents = useMemo(
-    () => events.filter((e) => isToday(e.created_at)),
+    () => {
+      const aujourdhuiDebut = new Date();
+      aujourdhuiDebut.setHours(0, 0, 0, 0);
+      return events.filter((e) => new Date(e.created_at) >= aujourdhuiDebut);
+    },
     [events]
   );
 
@@ -1717,19 +1720,20 @@ export default function Home() {
   }, [modeNuit, feedingProfile, isAuthenticated]);
 
   const lastSleepEvent = useMemo(
-    () => events.find((e) => e.type === "sieste" || e.type === "nuit") ?? null,
-    [events]
+    () =>
+      todayEvents.find((e) => e.type === "sieste" || e.type === "nuit") ?? null,
+    [todayEvents]
   );
 
   const sommeilSubtitle = useMemo(() => {
     if (!showPersonalData) return "Aucun enregistrement";
     if (!lastSleepEvent) return "Aucun enregistrement";
-    return getCardSubtitle(lastSleepEvent.type, events);
-  }, [lastSleepEvent, events, showPersonalData]);
+    return getCardSubtitle(lastSleepEvent.type, todayEvents);
+  }, [lastSleepEvent, todayEvents, showPersonalData]);
 
   function getDashboardCardSubtitle(type: EventType) {
     if (!showPersonalData) return "Aucun enregistrement";
-    return getCardSubtitle(type, events);
+    return getCardSubtitle(type, todayEvents);
   }
 
   const recommendedMl = feedingProfile?.date_naissance
