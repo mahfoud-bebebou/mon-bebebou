@@ -1,4 +1,10 @@
-export type EventType = "biberon" | "couche" | "sieste" | "pleure" | "nuit";
+export type EventType =
+  | "biberon"
+  | "couche"
+  | "sieste"
+  | "pleure"
+  | "nuit"
+  | "sieste_active";
 
 export type BebebouEvent = {
   id: string;

@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   heure_reveil_defaut text DEFAULT '07:00',
   sieste_alerte_enabled boolean DEFAULT false,
   sieste_alerte_minutes integer DEFAULT 120,
+  sieste_notif_enabled boolean DEFAULT false,
+  nuit_notif_enabled boolean DEFAULT false,
   unite_poids text DEFAULT 'kg',
   updated_at timestamptz DEFAULT now()
 );

@@ -732,6 +732,18 @@ export default function ReglagesPage() {
             />
           </label>
           <ToggleRow
+            label="Rappels toutes les 15 min pendant la sieste"
+            description="Reçois une notif toutes les 15 min"
+            checked={Boolean(settings.sieste_notif_enabled)}
+            onChange={(v) => void persist("sieste_notif_enabled", v)}
+          />
+          <ToggleRow
+            label="Rappels toutes les heures la nuit"
+            description="Reçois une notif chaque heure de nuit"
+            checked={Boolean(settings.nuit_notif_enabled)}
+            onChange={(v) => void persist("nuit_notif_enabled", v)}
+          />
+          <ToggleRow
             label="Alerte sieste longue"
             checked={Boolean(settings.sieste_alerte_enabled)}
             onChange={(v) => void persist("sieste_alerte_enabled", v)}

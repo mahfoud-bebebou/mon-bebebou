@@ -16,6 +16,8 @@ import {
   getCardSubtitle,
   getEventEmoji,
   getEventLabel,
+  insertSiesteActiveMarker,
+  deleteSiesteActiveMarker,
 } from "@/lib/events";
 import {
   type DemoBaby,
@@ -866,7 +868,8 @@ export default function Home() {
 
           if (
             newEvent.user_id &&
-            newEvent.user_id !== currentUserId
+            newEvent.user_id !== currentUserId &&
+            newEvent.type !== "sieste_active"
           ) {
             const emoji = getEventEmoji(newEvent.type);
             const label = getEventLabel(newEvent);
@@ -1308,7 +1311,7 @@ export default function Home() {
     setActiveModal("sommeil_sieste_start");
   }
 
-  function handleLancerSieste() {
+  async function handleLancerSieste() {
     const heureDebutTimestamp = combineDateAndTime(
       new Date(),
       siesteHeureDebutInput
@@ -1318,6 +1321,29 @@ export default function Home() {
     setSiesteHeureDebut(heureDebutTimestamp);
     setSiesteActive(true);
     saveSiesteActive({ actif: true, heure_debut: heureDebutISO });
+
+    if (isAuthenticated) {
+      try {
+        const supabaseClient = createSupabaseClient();
+        const {
+          data: { user },
+        } = await supabaseClient.auth.getUser();
+        let babyRecord = baby;
+        if (!babyRecord?.id) {
+          babyRecord = await loadAuthenticatedData();
+        }
+        if (user?.id && babyRecord?.id) {
+          await insertSiesteActiveMarker(
+            babyRecord.id,
+            user.id,
+            heureDebutISO
+          );
+        }
+      } catch (err) {
+        console.error("sieste_active insert:", err);
+      }
+    }
+
     setActiveModal(null);
   }
 
@@ -1358,6 +1384,14 @@ export default function Home() {
       toastDuration: 2000,
       toastBackgroundColor: "#4CAF50",
     });
+
+    if (isAuthenticated && baby?.id) {
+      try {
+        await deleteSiesteActiveMarker(baby.id);
+      } catch (err) {
+        console.error("sieste_active delete:", err);
+      }
+    }
 
     clearSiesteActive();
     setSiesteActive(false);

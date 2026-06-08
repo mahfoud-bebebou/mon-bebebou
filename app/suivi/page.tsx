@@ -88,6 +88,7 @@ const TYPE_LABELS: Record<BebebouEvent["type"], string> = {
   sieste: "Sieste",
   pleure: "Pleurs",
   nuit: "Nuit",
+  sieste_active: "Sieste en cours",
 };
 
 const COUCHE_OPTIONS: { id: CoucheType; label: string }[] = [
@@ -473,7 +474,11 @@ function SuiviPageContent() {
             return [newEvent, ...prev];
           });
 
-          if (newEvent.user_id && newEvent.user_id !== currentUserId) {
+          if (
+            newEvent.user_id &&
+            newEvent.user_id !== currentUserId &&
+            newEvent.type !== "sieste_active"
+          ) {
             const label = getEventLabel(newEvent);
             const membre = familyMembers.find((m) => m.id === newEvent.user_id);
             const roleInfo = getRoleLabel(membre?.role);

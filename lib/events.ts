@@ -28,11 +28,37 @@ export async function fetchEventsByBabyId(
     .from("events")
     .select("*")
     .eq("baby_id", babyId)
+    .neq("type", "sieste_active")
     .order("created_at", { ascending: false })
     .limit(50);
 
   if (error) throw error;
   return data ?? [];
+}
+
+export async function insertSiesteActiveMarker(
+  babyId: string,
+  userId: string,
+  createdAt: string
+): Promise<void> {
+  const { error } = await supabase.from("events").insert({
+    baby_id: babyId,
+    user_id: userId,
+    type: "sieste_active",
+    created_at: createdAt,
+  });
+
+  if (error) throw error;
+}
+
+export async function deleteSiesteActiveMarker(babyId: string): Promise<void> {
+  const { error } = await supabase
+    .from("events")
+    .delete()
+    .eq("baby_id", babyId)
+    .eq("type", "sieste_active");
+
+  if (error) throw error;
 }
 
 export type EventUpdatePayload = {
@@ -107,6 +133,7 @@ const EVENT_EMOJI: Record<EventType, string> = {
   sieste: "🌙",
   pleure: "😢",
   nuit: "🌙",
+  sieste_active: "😴",
 };
 
 export function getEventEmoji(type: EventType): string {
@@ -173,6 +200,8 @@ export function getEventLabel(event: BebebouEvent): string {
       }
       return event.note ?? "Bébé pleure";
     }
+    case "sieste_active":
+      return "Sieste en cours";
   }
 }
 
