@@ -10,7 +10,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { supabase } from "@/lib/supabase/client";
 import { ModalSheet } from "@/components/ModalSheet";
 import { isToday } from "@/lib/dashboard-messages";
 import {
@@ -151,13 +151,6 @@ const timeInputStyle = {
   boxSizing: "border-box" as const,
   marginBottom: 16,
 };
-
-function createSupabaseClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-}
 
 function getPeriodStartDate(period: SuiviPeriod): string {
   const dateDebut = new Date();
@@ -345,7 +338,6 @@ export default function SuiviPage() {
 function SuiviPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createSupabaseClient();
   const [events, setEvents] = useState<BebebouEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<SuiviPeriod>("today");
