@@ -233,6 +233,12 @@ export default function ReglagesPage() {
   );
 
   useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifDenied(Notification.permission === "denied");
+    }
+  }, []);
+
+  useEffect(() => {
     const checkNotifStatus = async () => {
       if (typeof window === "undefined") return;
       if (!("Notification" in window)) return;
@@ -394,6 +400,18 @@ export default function ReglagesPage() {
       return;
     }
     if (!userId) return;
+
+    if (Notification.permission === "denied") {
+      alert(
+        "Les notifications sont bloquées.\n\n" +
+          "Pour les activer :\n" +
+          "1. Réglages iPhone\n" +
+          "2. Notifications\n" +
+          "3. Bebebou\n" +
+          '4. Activer "Autoriser les notifications"'
+      );
+      return;
+    }
 
     setPushLoading(true);
     try {
@@ -592,18 +610,18 @@ export default function ReglagesPage() {
         <section style={sectionCard}>
           <h2 style={sectionTitle}>🔔 Notifications</h2>
 
-          {notifDenied && (
-            <p style={{ fontSize: 13, color: "#8B7FA0", margin: "0 0 12px" }}>
-              Désactivé dans les réglages iOS
-            </p>
-          )}
-
           <ToggleRow
             label="Rappels biberon"
             checked={notifEnabled}
-            disabled={pushLoading || notifDenied}
+            disabled={pushLoading}
             onChange={() => void toggleNotifications()}
           />
+
+          {notifDenied && (
+            <p style={{ fontSize: 12, color: "#E8406A", margin: "8px 0 0" }}>
+              Notifications bloquées — activez-les dans Réglages iOS
+            </p>
+          )}
 
           {notifEnabled && (
             <>
