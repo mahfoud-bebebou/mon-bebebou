@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
+import { useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { ModalSheet } from "@/components/ModalSheet";
 import { isToday } from "@/lib/dashboard-messages";
@@ -47,6 +55,17 @@ const PERIOD_OPTIONS: { id: SuiviPeriod; label: string }[] = [
   { id: "7days", label: "7 jours" },
   { id: "30days", label: "30 jours" },
 ];
+
+const CATEGORIES = [
+  { id: "tout", label: "Tout", emoji: "📋" },
+  { id: "biberon", label: "Biberon", emoji: "🍼" },
+  { id: "couche", label: "Couche", emoji: "🌿" },
+  { id: "sieste", label: "Sieste", emoji: "😴" },
+  { id: "nuit", label: "Nuit", emoji: "🌙" },
+  { id: "pleurs", label: "Pleurs", emoji: "😢" },
+] as const;
+
+type CategorieId = (typeof CATEGORIES)[number]["id"];
 
 const TYPE_LABELS: Record<BebebouEvent["type"], string> = {
   biberon: "Biberon",
@@ -159,6 +178,21 @@ function formatEventDate(dateStr: string): string {
   });
 }
 
+function formatTimelineHour(dateStr: string): string {
+  const date = new Date(dateStr);
+  return `${String(date.getHours()).padStart(2, "0")}h${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function matchesCategory(event: BebebouEvent, categorieActive: CategorieId): boolean {
+  if (categorieActive === "tout") return true;
+  if (categorieActive === "pleurs") return event.type === "pleure";
+  return event.type === categorieActive;
+}
+
+function isValidCategorieId(value: string | null): value is CategorieId {
+  return CATEGORIES.some((c) => c.id === value);
+}
+
 function eventReferenceDate(event: BebebouEvent): Date {
   return new Date(event.created_at);
 }
@@ -243,9 +277,34 @@ function choiceButtonStyle(active: boolean): CSSProperties {
 }
 
 export default function SuiviPage() {
+  return (
+    <Suspense
+      fallback={
+        <main
+          style={{
+            backgroundColor: "#FDF8F2",
+            minHeight: "100vh",
+            padding: "32px 16px 24px",
+            boxSizing: "border-box",
+          }}
+        >
+          <p style={{ textAlign: "center", color: "#8B7FA0", fontSize: 14 }}>
+            Chargement...
+          </p>
+        </main>
+      }
+    >
+      <SuiviPageContent />
+    </Suspense>
+  );
+}
+
+function SuiviPageContent() {
+  const searchParams = useSearchParams();
   const [events, setEvents] = useState<BebebouEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<SuiviPeriod>("today");
+  const [categorieActive, setCategorieActive] = useState<CategorieId>("tout");
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [demoSessionId, setDemoSessionId] = useState("");
@@ -331,23 +390,33 @@ export default function SuiviPage() {
     init();
   }, [reloadEvents]);
 
+  useEffect(() => {
+    const categorieParam = searchParams.get("categorie");
+    if (categorieParam && isValidCategorieId(categorieParam)) {
+      setCategorieActive(categorieParam);
+    }
+  }, [searchParams]);
+
   const filteredEvents = useMemo(
     () => filterByPeriod(events, period),
     [events, period]
+  );
+
+  const evenementsFiltres = useMemo(
+    () =>
+      filteredEvents
+        .filter((e) => matchesCategory(e, categorieActive))
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ),
+    [filteredEvents, categorieActive]
   );
 
   const sleepEvents = useMemo(
     () =>
       filteredEvents.filter(
         (e) => e.type === "sieste" || e.type === "nuit"
-      ),
-    [filteredEvents]
-  );
-
-  const otherEvents = useMemo(
-    () =>
-      filteredEvents.filter(
-        (e) => e.type !== "sieste" && e.type !== "nuit"
       ),
     [filteredEvents]
   );
@@ -1052,6 +1121,86 @@ export default function SuiviPage() {
     }
   }
 
+  function renderTimelineRow(event: BebebouEvent, index: number, total: number) {
+    return (
+        <li
+        key={event.id}
+        style={{
+          display: "flex",
+          gap: 12,
+          alignItems: "flex-start",
+          padding: "12px 0 12px 8",
+          borderBottom: index < total - 1 ? "1px solid #F0E8F8" : "none",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 12,
+            color: "#8B7FA0",
+            fontWeight: 600,
+            minWidth: 48,
+            flexShrink: 0,
+            paddingTop: 2,
+          }}
+        >
+          {formatTimelineHour(event.created_at)}
+        </span>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>
+            {getEventEmoji(event.type)}
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#4A3F5C",
+              }}
+            >
+              {TYPE_LABELS[event.type]}
+            </p>
+            <p
+              style={{
+                margin: "4px 0 0",
+                fontSize: 13,
+                color: "#8B7FA0",
+                lineHeight: 1.4,
+              }}
+            >
+              {getEventLabel(event)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openEditModal(event)}
+            aria-label={`Modifier ${TYPE_LABELS[event.type]}`}
+            style={{
+              backgroundColor: "transparent",
+              border: "none",
+              fontSize: 18,
+              cursor: "pointer",
+              color: "#8B7FA0",
+              flexShrink: 0,
+              padding: 0,
+              lineHeight: 1,
+            }}
+          >
+            ✏️
+          </button>
+        </div>
+      </li>
+    );
+  }
+
   function renderEventRow(
     event: BebebouEvent,
     index: number,
@@ -1200,6 +1349,54 @@ export default function SuiviPage() {
           ))}
         </div>
 
+        <div
+          className="suivi-category-scroll"
+          style={{
+            display: "flex",
+            gap: 8,
+            overflowX: "auto",
+            paddingBottom: 8,
+            marginBottom: 20,
+            msOverflowStyle: "none",
+            scrollbarWidth: "none",
+          }}
+        >
+          {CATEGORIES.map((cat) => {
+            const active = categorieActive === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategorieActive(cat.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  whiteSpace: "nowrap",
+                  borderRadius: 20,
+                  padding: "6px 14px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: active ? "none" : "1px solid #F0E8F5",
+                  backgroundColor: active ? "#E8406A" : "white",
+                  color: active ? "white" : "#8B7FA0",
+                  flexShrink: 0,
+                }}
+              >
+                <span>{cat.emoji}</span>
+                <span>{cat.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <style jsx global>{`
+          .suivi-category-scroll::-webkit-scrollbar {
+            display: none;
+          }
+        `}</style>
+
         <section
           style={{
             backgroundColor: "white",
@@ -1290,14 +1487,21 @@ export default function SuiviPage() {
             <p style={{ fontSize: 14, color: "#C03060", textAlign: "center" }}>
               {error}
             </p>
-          ) : otherEvents.length === 0 ? (
+          ) : evenementsFiltres.length === 0 ? (
             <p style={{ fontSize: 14, color: "#8B7FA0", textAlign: "center" }}>
-              Aucun autre événement pour cette période
+              Aucun événement pour cette période
             </p>
           ) : (
-            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-              {otherEvents.map((event, index) =>
-                renderEventRow(event, index, otherEvents.length)
+            <ul
+              style={{
+                listStyle: "none",
+                margin: 0,
+                paddingLeft: 16,
+                borderLeft: "2px solid #F0E8F5",
+              }}
+            >
+              {evenementsFiltres.map((event, index) =>
+                renderTimelineRow(event, index, evenementsFiltres.length)
               )}
             </ul>
           )}

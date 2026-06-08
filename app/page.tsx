@@ -2188,11 +2188,67 @@ export default function Home() {
             color: "#8B7FA0",
             textAlign: "center",
             boxShadow: "0 4px 16px rgba(74,63,92,0.06)",
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 4,
           }}
         >
-          🍼 {dailyScore.biberon} biberons · 🌿 {dailyScore.couche} couches · 🌙{" "}
-          {dailyScore.sieste} siestes · 😢 {dailyScore.pleure} pleurs · 🌙{" "}
-          {dailyScore.reveils} réveils
+          {(
+            [
+              {
+                emoji: "🍼",
+                count: dailyScore.biberon,
+                label: "biberons",
+                categorie: "biberon",
+              },
+              {
+                emoji: "🌿",
+                count: dailyScore.couche,
+                label: "couches",
+                categorie: "couche",
+              },
+              {
+                emoji: "🌙",
+                count: dailyScore.sieste,
+                label: "siestes",
+                categorie: "sieste",
+              },
+              {
+                emoji: "😢",
+                count: dailyScore.pleure,
+                label: "pleurs",
+                categorie: "pleurs",
+              },
+              {
+                emoji: "🌙",
+                count: dailyScore.reveils,
+                label: "réveils",
+                categorie: "nuit",
+              },
+            ] as const
+          ).map((stat, index) => (
+            <span key={stat.categorie} style={{ display: "inline-flex", alignItems: "center" }}>
+              {index > 0 && <span style={{ margin: "0 4px" }}>·</span>}
+              <button
+                type="button"
+                onClick={() => router.push(`/suivi?categorie=${stat.categorie}`)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  margin: 0,
+                  fontSize: 13,
+                  color: "#8B7FA0",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {stat.emoji} {stat.count} {stat.label}
+              </button>
+            </span>
+          ))}
         </motion.div>
       </div>
 
