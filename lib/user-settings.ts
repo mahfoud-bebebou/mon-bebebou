@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getIntervalleMinutes } from "./biberon";
+import type { BebebouEvent } from "./supabase";
 
 export const USER_SETTINGS_STORAGE_KEY = "user_settings";
 
@@ -196,4 +197,33 @@ export function getDefaultBiberonQuantity(settings: UserSettings): number {
 
 export function isCoparentNotifEnabled(settings: UserSettings): boolean {
   return settings.coparent_notif !== false;
+}
+
+export function getCoucheHoursAlert(
+  events: BebebouEvent[],
+  settings: UserSettings,
+  prenom: string
+): { message: string } | null {
+  if (settings.couche_alert_enabled === false) return null;
+
+  const derniereCouche = events
+    .filter((e) => e.type === "couche")
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0];
+
+  if (!derniereCouche) return null;
+
+  const heuresDepuis =
+    (Date.now() - new Date(derniereCouche.created_at).getTime()) / 3_600_000;
+  const threshold = settings.couche_alert_hours ?? 4;
+
+  if (heuresDepuis >= threshold) {
+    return {
+      message: `🌿 Aucun change depuis ${Math.floor(heuresDepuis)}h — pense à changer ${prenom}`,
+    };
+  }
+
+  return null;
 }

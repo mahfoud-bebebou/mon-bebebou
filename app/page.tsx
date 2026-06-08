@@ -114,6 +114,7 @@ import {
 import {
   getDefaultUserSettings,
   getDefaultBiberonQuantity,
+  getCoucheHoursAlert,
   getEffectiveBiberonIntervalMinutes,
   isCoparentNotifEnabled,
   isInAutoNightWindow,
@@ -291,54 +292,6 @@ function getBabyAge(dateNaissance: string): string {
     : `${annees} ans`;
 }
 
-function countPipiCouchesToday(events: BebebouEvent[]): number {
-  const aujourdhuiDebut = new Date();
-  aujourdhuiDebut.setHours(0, 0, 0, 0);
-  return events.filter((e) => {
-    if (e.type !== "couche") return false;
-    if (new Date(e.created_at) < aujourdhuiDebut) return false;
-    const meta = parseCoucheMeta(e.note);
-    if (meta) return includesPipi(meta.type_couche);
-    return e.note === "pipi" || e.note === "les_deux";
-  }).length;
-}
-
-function getCoucheBandeauMessage(
-  events: BebebouEvent[],
-  prenom: string
-): { severity: "orange"; message: string } | null {
-  const heureActuelle = new Date().getHours();
-  const heuresEveillees = heureActuelle - 6;
-  const couchesAttendues = Math.floor(heuresEveillees / 1.5);
-  const nbCouchesAujourdhui = countTodayEvents(events, "couche");
-  const pipiCount = countPipiCouchesToday(events);
-
-  if (heureActuelle >= 18) {
-    if (pipiCount >= 6) return null;
-    return {
-      severity: "orange",
-      message: `💧 Seulement ${pipiCount} couche${pipiCount > 1 ? "s" : ""} mouillée${pipiCount > 1 ? "s" : ""} aujourd'hui — vérifie l'hydratation de ${prenom}`,
-    };
-  }
-
-  if (heuresEveillees <= 0 || nbCouchesAujourdhui >= couchesAttendues) {
-    return null;
-  }
-
-  if (nbCouchesAujourdhui === 0) {
-    return {
-      severity: "orange",
-      message:
-        "Aucune couche enregistrée ce matin — pense à noter le prochain change",
-    };
-  }
-
-  return {
-    severity: "orange",
-    message: `Seulement ${nbCouchesAujourdhui} couche${nbCouchesAujourdhui > 1 ? "s" : ""} depuis ce matin — normale pour ${heuresEveillees}h d'éveil`,
-  };
-}
-
 function getEffectivePoids(baby: {
   poids_actuel?: number | null;
   poids_naissance?: number | null;
@@ -421,7 +374,13 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
-  const [biberonMl, setBiberonMl] = useState("120");
+  const [biberonMl, setBiberonMl] = useState(() =>
+    String(
+      getDefaultBiberonQuantity(
+        mergeUserSettings(getDefaultUserSettings(), loadSettingsFromLocalStorage())
+      )
+    )
+  );
   const [biberonMlEdited, setBiberonMlEdited] = useState(false);
   const [biberonTakeTime, setBiberonTakeTime] = useState(getCurrentTimeValue);
   const [biberonInputMode, setBiberonInputMode] = useState<
@@ -797,8 +756,13 @@ export default function Home() {
   const showToast = useCallback(
     (
       message: string,
-      options?: { duration?: number; backgroundColor?: string }
+      options?: {
+        duration?: number;
+        backgroundColor?: string;
+        coparent?: boolean;
+      }
     ) => {
+      if (options?.coparent && !isCoparentNotifEnabled(userSettings)) return;
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       setToastMessage(message);
       setToastBackgroundColor(options?.backgroundColor ?? "#4A3F5C");
@@ -809,7 +773,7 @@ export default function Home() {
         setToastMessage(null);
       }, options?.duration ?? 3000);
     },
-    []
+    [userSettings]
   );
 
   useLayoutEffect(() => {
@@ -902,8 +866,7 @@ export default function Home() {
 
           if (
             newEvent.user_id &&
-            newEvent.user_id !== currentUserId &&
-            isCoparentNotifEnabled(userSettings)
+            newEvent.user_id !== currentUserId
           ) {
             const emoji = getEventEmoji(newEvent.type);
             const label = getEventLabel(newEvent);
@@ -911,7 +874,8 @@ export default function Home() {
             const roleInfo = getRoleLabel(membre?.role);
             const prenom = membre ? getMemberPrenom(membre) : "Quelqu'un";
             showToast(
-              `${roleInfo.emoji} ${prenom} vient d'enregistrer ${label}`
+              `${roleInfo.emoji} ${prenom} vient d'enregistrer ${label}`,
+              { coparent: true }
             );
           }
         }
@@ -953,14 +917,21 @@ export default function Home() {
   }, [baby?.id, isAuthenticated, userScopeId, showToast, familyMembers, userSettings]);
 
   useEffect(() => {
-    if (!isAuthenticated || !userScopeId) return;
     const local = loadSettingsFromLocalStorage();
     if (local) {
       setUserSettings(mergeUserSettings(getDefaultUserSettings(), local));
     }
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !userScopeId) return;
     const supabaseClient = createSupabaseClient();
     void loadUserSettings(supabaseClient, userScopeId).then(setUserSettings);
   }, [isAuthenticated, userScopeId]);
+
+  useEffect(() => {
+    setBiberonMl(String(getDefaultBiberonQuantity(userSettings)));
+  }, [userSettings.biberon_quantite_defaut]);
 
   useEffect(() => {
     if (!isAuthenticated || !baby?.id || !userScopeId) return;
@@ -1002,6 +973,54 @@ export default function Home() {
       if (saved.coucher) setNuitCoucher(saved.coucher);
     }
   }, [scopeId]);
+
+  useEffect(() => {
+    if (!scopeId) return;
+
+    const checkModeNuit = () => {
+      if (!userSettings.nuit_auto_enabled) return;
+
+      const now = new Date();
+      const heureActuelle = now.getHours() * 60 + now.getMinutes();
+
+      const [hDebut, mDebut] = (userSettings.nuit_auto_debut ?? "21:00")
+        .split(":")
+        .map(Number);
+      const [hFin, mFin] = (userSettings.nuit_auto_fin ?? "07:00")
+        .split(":")
+        .map(Number);
+      const debut = hDebut * 60 + mDebut;
+      const fin = hFin * 60 + mFin;
+
+      const estNuit =
+        debut > fin
+          ? heureActuelle >= debut || heureActuelle < fin
+          : heureActuelle >= debut && heureActuelle < fin;
+
+      if (estNuit && !modeNuit) {
+        activateModeNuit({
+          actif: true,
+          heure_debut: new Date().toISOString(),
+          auto: true,
+        });
+      } else if (!estNuit && modeNuit) {
+        const saved = loadModeNuit(scopeId);
+        if (saved?.auto) {
+          void deactivateModeNuit();
+        }
+      }
+    };
+
+    checkModeNuit();
+    const interval = setInterval(checkModeNuit, 60_000);
+    return () => clearInterval(interval);
+  }, [
+    scopeId,
+    userSettings.nuit_auto_enabled,
+    userSettings.nuit_auto_debut,
+    userSettings.nuit_auto_fin,
+    modeNuit,
+  ]);
 
   useLayoutEffect(() => {
     const savedSieste = loadSiesteActive();
@@ -1813,19 +1832,26 @@ export default function Home() {
   const coucheBandeau = useMemo(() => {
     if (!isAuthenticated || !feedingProfile?.prenom) return null;
     if (suppressDashboardAlerts) return null;
-    return getCoucheBandeauMessage(events, feedingProfile.prenom);
-  }, [events, feedingProfile, isAuthenticated, suppressDashboardAlerts]);
+    return getCoucheHoursAlert(events, userSettings, feedingProfile.prenom);
+  }, [
+    events,
+    feedingProfile,
+    isAuthenticated,
+    suppressDashboardAlerts,
+    userSettings,
+  ]);
 
   const coucheDashboardAlerts = useMemo(() => {
     if (!isAuthenticated) return [];
     if (!feedingProfile?.prenom) return [];
+    if (userSettings.couche_alert_enabled === false) return [];
     return getCoucheDashboardAlerts(
       events,
       feedingProfile.prenom,
       (feedingProfile.type_lait as TypeLait) ?? null,
       (feedingProfile.intolerances as Intolerance[]) ?? null
     );
-  }, [events, feedingProfile, isAuthenticated]);
+  }, [events, feedingProfile, isAuthenticated, userSettings]);
 
   const biberonAlert = useMemo(() => {
     if (!isAuthenticated) return null;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
+import { getEffectiveBiberonIntervalMinutes } from '@/lib/user-settings'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -48,28 +49,33 @@ export async function GET() {
 
     if (!dernierBiberon) continue
 
-    // Calcule l'intervalle selon l'âge
+    const { data: userSettings } = await supabase
+      .from('user_settings')
+      .select(
+        'notif_delay_minutes, notif_enabled, biberon_intervalle_auto, biberon_intervalle_minutes'
+      )
+      .eq('user_id', sub.user_id)
+      .maybeSingle()
+
+    if (userSettings?.notif_enabled === false) continue
+
+    const delai = userSettings?.notif_delay_minutes ?? 15
+
     const ageJours = Math.floor(
       (Date.now() - new Date(baby.date_naissance).getTime()) / 86400000
     )
 
-    let intervalleMin = 210 // 3h30 par défaut
-    if (ageJours <= 14) intervalleMin = 150
-    else if (ageJours <= 30) intervalleMin = 165
-    else if (ageJours <= 60) intervalleMin = 180
-    else if (ageJours <= 90) intervalleMin = 195
-    else if (ageJours <= 180) intervalleMin = 210
-    else if (ageJours <= 270) intervalleMin = 240
-    else if (ageJours <= 365) intervalleMin = 270
-    else intervalleMin = 300
+    const intervalleMin = getEffectiveBiberonIntervalMinutes(
+      userSettings ?? {},
+      ageJours,
+      baby.parcours ?? 'artificiel'
+    )
 
     const minutesEcoulees =
       (Date.now() - new Date(dernierBiberon.created_at).getTime()) / 60000
     const restant = intervalleMin - minutesEcoulees
 
-    // Envoie notification à exactement 15 min restantes
-    // (entre 14 et 16 min pour tolérance cron)
-    if (restant >= 14 && restant <= 16) {
+    if (restant >= delai - 1 && restant <= delai + 1) {
       const subscription = JSON.parse(sub.subscription)
       const prenom =
         baby.prenom?.charAt(0).toUpperCase() +
@@ -80,7 +86,7 @@ export async function GET() {
           subscription,
           JSON.stringify({
             title: '🍼 Mon Bébébou',
-            body: `Biberon de ${prenom} dans 15 minutes — prépare-toi !`,
+            body: `Biberon de ${prenom} dans ${delai} minutes — prépare-toi !`,
           })
         )
         sent++

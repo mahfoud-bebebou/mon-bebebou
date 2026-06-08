@@ -41,6 +41,7 @@ export type ModeNuitState = {
   heure_debut: string;
   coucher?: string;
   nb_reveils_prevus?: number;
+  auto?: boolean;
 };
 
 export const SIESTE_ACTIVE_KEY = "sieste_active";

@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -40,6 +41,20 @@ import {
   toTimeInputValue,
 } from "@/lib/sleep";
 import type { BebebouEvent } from "@/lib/supabase";
+import {
+  getCoucheHoursAlert,
+  getDefaultUserSettings,
+  isCoparentNotifEnabled,
+  loadSettingsFromLocalStorage,
+  loadUserSettings,
+  mergeUserSettings,
+  type UserSettings,
+} from "@/lib/user-settings";
+import {
+  type FamilyMemberProfile,
+  getMemberPrenom,
+} from "@/lib/family";
+import { getRoleLabel } from "@/lib/roles";
 
 type SuiviPeriod = "today" | "7days" | "30days";
 type CoucheType = "pipi" | "caca" | "les_deux";
@@ -336,7 +351,15 @@ function SuiviPageContent() {
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [babyId, setBabyId] = useState<string | null>(null);
+  const [babyPrenom, setBabyPrenom] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [userSettings, setUserSettings] = useState<UserSettings>(() =>
+    mergeUserSettings(getDefaultUserSettings(), loadSettingsFromLocalStorage())
+  );
+  const [familyMembers, setFamilyMembers] = useState<FamilyMemberProfile[]>([]);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showSleepModal, setShowSleepModal] = useState(false);
   const [sleepType, setSleepType] = useState<"sieste" | "nuit">("sieste");
   const [sleepDebut, setSleepDebut] = useState(() => toTimeInputValue());
@@ -362,12 +385,21 @@ function SuiviPageContent() {
 
       let resolvedBabyId: string | null = null;
       if (profile?.family_id) {
+        const { data: membresData } = await supabase
+          .from("profiles")
+          .select("id, prenom, prenom_maman, prenom_papa, role")
+          .eq("family_id", profile.family_id);
+        if (membresData) {
+          setFamilyMembers(membresData as FamilyMemberProfile[]);
+        }
+
         const { data: baby } = await supabase
           .from("babies")
-          .select("id")
+          .select("id, prenom, name")
           .eq("family_id", profile.family_id)
           .maybeSingle();
         resolvedBabyId = baby?.id ?? null;
+        setBabyPrenom(baby?.prenom ?? baby?.name ?? null);
       }
       setBabyId(resolvedBabyId);
 
@@ -383,11 +415,87 @@ function SuiviPageContent() {
     setIsAuthenticated(false);
     setUserId(null);
     setBabyId(null);
+    setBabyPrenom(null);
+    setFamilyMembers([]);
     const sessionId = getOrCreateSessionId();
     setDemoSessionId(sessionId);
     const data = await fetchDemoEvents(sessionId);
     setEvents(data);
   }, []);
+
+  const showToast = useCallback(
+    (message: string, options?: { coparent?: boolean }) => {
+      if (options?.coparent && !isCoparentNotifEnabled(userSettings)) return;
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setToastMessage(message);
+      setToastVisible(true);
+      toastTimerRef.current = setTimeout(() => {
+        setToastVisible(false);
+        setToastMessage(null);
+      }, 3000);
+    },
+    [userSettings]
+  );
+
+  useEffect(() => {
+    const local = loadSettingsFromLocalStorage();
+    if (local) {
+      setUserSettings(mergeUserSettings(getDefaultUserSettings(), local));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !userId) return;
+    const supabase = createSupabaseClient();
+    void loadUserSettings(supabase, userId).then(setUserSettings);
+  }, [isAuthenticated, userId]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !babyId || !userId) return;
+
+    const supabase = createSupabaseClient();
+    const currentUserId = userId;
+
+    const channel = supabase
+      .channel(`suivi-events-${babyId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "events",
+          filter: `baby_id=eq.${babyId}`,
+        },
+        (payload) => {
+          const newEvent = payload.new as BebebouEvent;
+          setEvents((prev) => {
+            if (prev.some((e) => e.id === newEvent.id)) return prev;
+            return [newEvent, ...prev];
+          });
+
+          if (newEvent.user_id && newEvent.user_id !== currentUserId) {
+            const label = getEventLabel(newEvent);
+            const membre = familyMembers.find((m) => m.id === newEvent.user_id);
+            const roleInfo = getRoleLabel(membre?.role);
+            const prenom = membre ? getMemberPrenom(membre) : "Quelqu'un";
+            showToast(
+              `${roleInfo.emoji} ${prenom} vient d'enregistrer ${label}`,
+              { coparent: true }
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [babyId, isAuthenticated, userId, showToast, familyMembers]);
+
+  const coucheAlert = useMemo(() => {
+    if (!isAuthenticated || !babyPrenom) return null;
+    return getCoucheHoursAlert(events, userSettings, babyPrenom);
+  }, [events, userSettings, isAuthenticated, babyPrenom]);
 
   useEffect(() => {
     async function init() {
@@ -1329,6 +1437,24 @@ function SuiviPageContent() {
           </div>
         )}
 
+        {isAuthenticated && coucheAlert && (
+          <div
+            style={{
+              backgroundColor: "#F5A623",
+              color: "white",
+              borderRadius: 16,
+              padding: "12px 16px",
+              fontSize: 14,
+              fontWeight: 600,
+              textAlign: "center",
+              marginBottom: 20,
+              boxShadow: "0 4px 16px rgba(74,63,92,0.12)",
+            }}
+          >
+            {coucheAlert.message}
+          </div>
+        )}
+
         <div
           style={{
             display: "flex",
@@ -1763,6 +1889,29 @@ function SuiviPageContent() {
           </button>
         </div>
       </ModalSheet>
+
+      {toastVisible && toastMessage && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 88,
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#4A3F5C",
+            color: "white",
+            padding: "12px 20px",
+            borderRadius: 14,
+            fontSize: 14,
+            fontWeight: 600,
+            zIndex: 9999,
+            maxWidth: "90%",
+            textAlign: "center",
+            boxShadow: "0 4px 16px rgba(74,63,92,0.2)",
+          }}
+        >
+          {toastMessage}
+        </div>
+      )}
     </main>
   );
 }
