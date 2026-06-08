@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bebebou-v2'
+const CACHE_NAME = 'bebebou-v3'
 self.addEventListener('install', event => {
   self.skipWaiting()
 })
