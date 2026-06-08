@@ -22,7 +22,6 @@ import {
 } from "@/lib/demo";
 import {
   deleteEvent,
-  fetchEventsByBabyId,
   formatTimeShort,
   getEventEmoji,
   getEventLabel,
@@ -367,78 +366,82 @@ function SuiviPageContent() {
   const [sleepFin, setSleepFin] = useState(() => toTimeInputValue());
   const [sleepReveils, setSleepReveils] = useState(0);
 
-  const reloadEvents = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setError(null);
     const supabase = createSupabaseClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (user) {
-      setIsAuthenticated(true);
-      setUserId(user.id);
-
-      if (babyId) {
-        const data = await fetchEventsByBabyId(babyId);
-        setEvents(data);
-      } else {
-        setEvents([]);
-      }
+    if (!user) {
+      setIsAuthenticated(false);
+      setUserId(null);
+      setBabyId(null);
+      setBabyPrenom(null);
+      setFamilyMembers([]);
+      const sessionId = getOrCreateSessionId();
+      setDemoSessionId(sessionId);
+      const data = await fetchDemoEvents(sessionId);
+      setEvents(data);
       return;
     }
 
-    setIsAuthenticated(false);
-    setUserId(null);
-    setBabyId(null);
-    setBabyPrenom(null);
-    setFamilyMembers([]);
-    const sessionId = getOrCreateSessionId();
-    setDemoSessionId(sessionId);
-    const data = await fetchDemoEvents(sessionId);
-    setEvents(data);
-  }, [babyId]);
+    setIsAuthenticated(true);
+    setUserId(user.id);
 
-  useEffect(() => {
-    async function init() {
-      const supabase = createSupabaseClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("family_id")
+      .eq("id", user.id)
+      .single();
 
-      setUserId(user.id);
-      setIsAuthenticated(true);
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("family_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.family_id) return;
-
-      const { data: membresData } = await supabase
-        .from("profiles")
-        .select("id, prenom, prenom_maman, prenom_papa, role")
-        .eq("family_id", profile.family_id);
-      if (membresData) {
-        setFamilyMembers(membresData as FamilyMemberProfile[]);
-      }
-
-      const { data: baby } = await supabase
-        .from("babies")
-        .select("id, prenom")
-        .eq("family_id", profile.family_id)
-        .single();
-
-      if (baby) {
-        setBabyId(baby.id);
-        setBabyPrenom(baby.prenom ?? null);
-      }
+    if (!profile?.family_id) {
+      setEvents([]);
+      return;
     }
 
-    void init();
-  }, []);
+    const { data: membresData } = await supabase
+      .from("profiles")
+      .select("id, prenom, prenom_maman, prenom_papa, role")
+      .eq("family_id", profile.family_id);
+    if (membresData) {
+      setFamilyMembers(membresData as FamilyMemberProfile[]);
+    }
+
+    const { data: baby } = await supabase
+      .from("babies")
+      .select("*")
+      .eq("family_id", profile.family_id)
+      .single();
+
+    if (!baby) {
+      setEvents([]);
+      return;
+    }
+
+    setBabyId(baby.id);
+    setBabyPrenom(baby.prenom ?? null);
+
+    const dateDebut = new Date();
+    if (period === "today") {
+      dateDebut.setHours(0, 0, 0, 0);
+    } else if (period === "7days") {
+      dateDebut.setDate(dateDebut.getDate() - 7);
+    } else if (period === "30days") {
+      dateDebut.setDate(dateDebut.getDate() - 30);
+    }
+
+    const { data: eventsData, error: eventsError } = await supabase
+      .from("events")
+      .select("*")
+      .eq("baby_id", baby.id)
+      .neq("type", "sieste_active")
+      .gte("created_at", dateDebut.toISOString())
+      .order("created_at", { ascending: false });
+
+    if (eventsError) throw eventsError;
+    if (eventsData) setEvents(eventsData);
+  }, [period]);
 
   const showToast = useCallback(
     (message: string, options?: { coparent?: boolean }) => {
@@ -519,9 +522,9 @@ function SuiviPageContent() {
   }, [events, userSettings, isAuthenticated, babyPrenom]);
 
   useEffect(() => {
-    async function init() {
+    async function run() {
       try {
-        await reloadEvents();
+        await loadData();
       } catch (err) {
         console.error(err);
         setError("Impossible de charger l'historique");
@@ -531,8 +534,8 @@ function SuiviPageContent() {
       }
     }
 
-    init();
-  }, [reloadEvents]);
+    void run();
+  }, [loadData]);
 
   useEffect(() => {
     const categorieParam = searchParams.get("categorie");
@@ -789,7 +792,7 @@ function SuiviPageContent() {
         await updateDemoEvent(sessionId, editingEvent.id, payload);
       }
 
-      await reloadEvents();
+      await loadData();
       setEditingEvent(null);
     } catch (err) {
       console.error(err);
@@ -814,7 +817,7 @@ function SuiviPageContent() {
         await deleteDemoEvent(sessionId, editingEvent.id);
       }
 
-      await reloadEvents();
+      await loadData();
       setEditingEvent(null);
     } catch (err) {
       console.error(err);
@@ -878,7 +881,7 @@ function SuiviPageContent() {
         );
       }
 
-      await reloadEvents();
+      await loadData();
       setShowSleepModal(false);
     } catch (err) {
       console.error(err);
