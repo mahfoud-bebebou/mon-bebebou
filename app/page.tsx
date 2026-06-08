@@ -701,6 +701,7 @@ export default function Home() {
         saveModeNuit(user.id, savedMode);
       }
 
+      console.log("Loading events for baby:", baby.id);
       const events = await fetchEventsByBabyId(baby.id);
       setEvents(events);
 
@@ -827,6 +828,7 @@ export default function Home() {
       if (!user) return;
       if (!baby?.id) return;
 
+      console.log("Loading events for baby:", baby.id);
       const data = await fetchEventsByBabyId(baby.id);
       setEvents(data);
     } catch (err) {

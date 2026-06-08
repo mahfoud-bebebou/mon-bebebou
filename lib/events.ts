@@ -30,9 +30,10 @@ export async function fetchEventsByBabyId(
     .eq("baby_id", babyId)
     .neq("type", "sieste_active")
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(100);
 
-  if (error) throw error;
+  if (error) console.error("Events error:", error);
+  if (data) console.log("Events loaded:", data.length);
   return data ?? [];
 }
 
