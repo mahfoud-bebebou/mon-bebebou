@@ -6,8 +6,17 @@ export default function PWAInstaller() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
         .register('/sw.js')
-        .then(reg => console.log('SW registered:', reg))
-        .catch(err => console.log('SW error:', err))
+        .then(reg => {
+          console.log('SW registered:', reg)
+
+          // Demande permission notifications
+          if ('Notification' in window &&
+              Notification.permission === 'default') {
+            Notification.requestPermission().then(permission => {
+              console.log('Notification permission:', permission)
+            })
+          }
+        })
     }
   }, [])
   return null
