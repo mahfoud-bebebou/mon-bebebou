@@ -22,6 +22,9 @@ import {
   type UserSettings,
 } from "@/lib/user-settings";
 
+const VAPID_PUBLIC_KEY =
+  "BFvgxcal0hATPPbDa3q0HVvFK_YymRVNknJQWFpIq04ac-8NgKKqZPrPTqBbYsqsDXyCcNqY2DWCN4wi-EEMMvw";
+
 function createSupabaseClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -248,7 +251,7 @@ export default function ReglagesPage() {
 
       if (Notification.permission === "granted") {
         if ("serviceWorker" in navigator) {
-          console.log("VAPID key:", process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
+          console.log("VAPID key:", VAPID_PUBLIC_KEY);
           console.log("SW ready:", "serviceWorker" in navigator);
           console.log("PushManager:", "PushManager" in window);
           console.log("Notification permission:", Notification.permission);
@@ -264,15 +267,9 @@ export default function ReglagesPage() {
             await saveSettings("notif_enabled", true);
           } else {
             try {
-              const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-              if (!vapidKey) {
-                console.error("Subscribe failed: VAPID key missing");
-                setNotifEnabled(false);
-                return;
-              }
               const newSub = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
-                applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+                applicationServerKey: VAPID_PUBLIC_KEY,
               });
               console.log("New subscription:", newSub);
               await fetch("/api/push/subscribe", {
@@ -455,18 +452,13 @@ export default function ReglagesPage() {
 
         await navigator.serviceWorker.register("/sw.js");
         const reg = await navigator.serviceWorker.ready;
-        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-        if (!vapidKey) {
-          showToast("Clé VAPID manquante");
-          return;
-        }
 
         const existing = await reg.pushManager.getSubscription();
         const sub =
           existing ||
           (await reg.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: vapidKey,
+            applicationServerKey: VAPID_PUBLIC_KEY,
           }));
 
         await fetch("/api/push/subscribe", {
