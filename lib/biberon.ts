@@ -69,6 +69,19 @@ export function getBiberonAlertState(params: {
     };
   }
 
+  const dernierBiberonDate = new Date(dernierBiberon.created_at);
+  const aujourdhuiSixHeures = new Date();
+  aujourdhuiSixHeures.setHours(6, 0, 0, 0);
+
+  if (dernierBiberonDate < aujourdhuiSixHeures) {
+    return {
+      message: `🍼 Bonjour ! Enregistre le premier biberon de ${prenom}`,
+      bandeauCouleur: null,
+      afficherMinuteurInverse: false,
+      minuteurMode: null,
+    };
+  }
+
   const maintenant = Date.now();
   const dernierBiberonTime = new Date(dernierBiberon.created_at).getTime();
   const minutesEcoulees = (maintenant - dernierBiberonTime) / 60000;

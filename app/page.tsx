@@ -679,13 +679,13 @@ export default function Home() {
     void syncModeNuitToBaby(state);
   }
 
-  function deactivateModeNuit() {
+  async function deactivateModeNuit() {
     const id = isAuthenticated ? userScopeId : demoSessionId;
     if (!id) return;
     clearModeNuit(id);
     setModeNuit(false);
     setModeNuitData(null);
-    void syncModeNuitToBaby(null);
+    await syncModeNuitToBaby(null);
   }
 
   function openBiberonModal() {
@@ -1069,12 +1069,12 @@ export default function Home() {
     note?: string,
     quantity?: number,
     options?: AddEventOptions
-  ) {
+  ): Promise<boolean> {
     const eventType = type as EventType;
 
     if (!isAuthenticated) {
       await addDemoEvent(eventType, note, quantity, options);
-      return;
+      return true;
     }
 
     setSaving(true);
@@ -1090,7 +1090,7 @@ export default function Home() {
         "Erreur d'enregistrement : profil bébé introuvable (baby_id manquant)"
       );
       setSaving(false);
-      return;
+      return false;
     }
 
     const supabaseClient = createSupabaseClient();
@@ -1100,7 +1100,7 @@ export default function Home() {
 
     if (!user) {
       setSaving(false);
-      return;
+      return false;
     }
 
     const valeur = quantity ?? null;
@@ -1126,23 +1126,26 @@ export default function Home() {
     if (insertError) {
       console.error(insertError);
       setError(`Erreur d'enregistrement : ${insertError.message}`);
-    } else {
-      await fetchEvents();
-      setLastRecordedEventType(eventType);
-      setActiveModal(null);
-      if (babyContext) {
-        showToast(
-          options?.customToast ??
-            getEventToastMessage(eventType, babyContext, note, quantity),
-          {
-            duration: options?.toastDuration,
-            backgroundColor: options?.toastBackgroundColor,
-          }
-        );
-      }
+      setSaving(false);
+      return false;
+    }
+
+    await fetchEvents();
+    setLastRecordedEventType(eventType);
+    setActiveModal(null);
+    if (babyContext) {
+      showToast(
+        options?.customToast ??
+          getEventToastMessage(eventType, babyContext, note, quantity),
+        {
+          duration: options?.toastDuration,
+          backgroundColor: options?.toastBackgroundColor,
+        }
+      );
     }
 
     setSaving(false);
+    return true;
   }
 
   function handleShareClick() {
@@ -1243,7 +1246,7 @@ export default function Home() {
     setActiveModal("sommeil_nuit_wake");
   }
 
-  function handleNuitWakeSubmit() {
+  async function handleNuitWakeSubmit() {
     const prenom = babyContext?.prenom ?? demoBaby?.prenom;
     const dateNaissance = babyContext?.date_naissance ?? demoBaby?.date_naissance;
     if (!prenom || !modeNuitData) return;
@@ -1263,12 +1266,14 @@ export default function Home() {
       totalReveils: nuitReveilCount,
     });
 
-    deactivateModeNuit();
-    setActiveModal(null);
-    addEvent("nuit", serializeNote(meta), durationMin, {
+    const ok = await addEvent("nuit", serializeNote(meta), durationMin, {
       createdAt: leverDate.toISOString(),
       customToast: analysis,
     });
+
+    if (ok) {
+      await deactivateModeNuit();
+    }
   }
 
   function handleSommeilTypeSelect(type: SleepFormType) {
