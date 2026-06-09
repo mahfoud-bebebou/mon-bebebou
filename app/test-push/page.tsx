@@ -57,7 +57,8 @@ export default function TestPush() {
     }
 
     try {
-      const reg = await navigator.serviceWorker.ready
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    const reg = await navigator.serviceWorker.ready
       addLog('✅ Service Worker prêt')
 
       const registrations = await navigator.serviceWorker.getRegistrations(); for (const r of registrations) { const s = await r.pushManager.getSubscription(); if (s) await s.unsubscribe(); await r.unregister(); } await navigator.serviceWorker.register("/sw.js"); const reg2 = await navigator.serviceWorker.ready; const existing = await reg2.pushManager.getSubscription()
