@@ -1,211 +1,89 @@
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic'
 
-import { NextResponse } from 'next/server'
-import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
-import { getEffectiveBiberonIntervalMinutes } from '@/lib/user-settings'
+import webpush from 'web-push'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-function formatPrenom(prenom?: string | null): string {
-  if (!prenom) return 'Bébé'
-  return prenom.charAt(0).toUpperCase() + prenom.slice(1).toLowerCase()
-}
-
-function formatSiesteDuration(minutesSieste: number): string {
-  const heures = Math.floor(minutesSieste / 60)
-  const minutes = Math.floor(minutesSieste % 60)
-  return heures > 0
-    ? `${heures}h${String(minutes).padStart(2, '0')}`
-    : `${Math.floor(minutesSieste)} min`
-}
-
 export async function GET() {
-  const subject = process.env.VAPID_SUBJECT
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  const privateKey = process.env.VAPID_PRIVATE_KEY
-  if (!subject || !publicKey || !privateKey) {
-    return NextResponse.json({ sent: 0 })
-  }
+  try {
+    webpush.setVapidDetails(
+      'mailto:contact@monbebebou.fr',
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+      process.env.VAPID_PRIVATE_KEY!
+    )
 
-  webpush.setVapidDetails(subject, publicKey, privateKey)
+    const now = new Date()
+    const in15 = new Date(now.getTime() + 15 * 60 * 1000)
+    const in16 = new Date(now.getTime() + 16 * 60 * 1000)
 
-  const { data: subscriptions } = await supabase
-    .from('push_subscriptions')
-    .select('*, babies(*)')
+    const { data: events } = await supabase
+      .from('events')
+      .select('baby_id, created_at, data')
+      .eq('type', 'biberon')
+      .gte('created_at', new Date(now.getTime() - 4 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
 
-  if (!subscriptions?.length) {
-    return NextResponse.json({ sent: 0 })
-  }
+    if (!events || events.length === 0) return Response.json({ sent: 0 })
 
-  let sent = 0
+    const latest: Record<string, typeof events[0]> = {}
+    for (const e of events) {
+      if (!latest[e.baby_id]) latest[e.baby_id] = e
+    }
 
-  for (const sub of subscriptions) {
-    const baby = sub.babies
-    if (!baby) continue
+    let sent = 0
 
-    const { data: userSettings } = await supabase
-      .from('user_settings')
-      .select(
-        'notif_delay_minutes, notif_enabled, biberon_intervalle_auto, biberon_intervalle_minutes, sieste_alerte_enabled, sieste_alerte_minutes, sieste_notif_enabled, sieste_notif_interval_minutes, nuit_notif_enabled, nuit_notif_interval_minutes, nuit_alerte_courte_enabled, nuit_alerte_courte_minutes'
-      )
-      .eq('user_id', sub.user_id)
-      .maybeSingle()
+    for (const [babyId, event] of Object.entries(latest)) {
+      const intervalMinutes = event.data?.intervalMinutes ?? 180
+      const lastFeed = new Date(event.created_at)
+      const nextFeed = new Date(lastFeed.getTime() + intervalMinutes * 60 * 1000)
 
-    const subscription = JSON.parse(sub.subscription)
-    const prenom = formatPrenom(baby.prenom)
+      if (nextFeed >= in15 && nextFeed <= in16) {
+        const { data: baby } = await supabase
+          .from('babies')
+          .select('family_id')
+          .eq('id', babyId)
+          .single()
 
-    const sendPush = async (title: string, body: string) => {
-      try {
-        await webpush.sendNotification(
-          subscription,
-          JSON.stringify({ title, body })
-        )
-        sent++
-      } catch (err) {
-        console.error('Push error:', err)
-        await supabase
+        if (!baby) continue
+
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('family_id', baby.family_id)
+
+        if (!profiles) continue
+
+        const { data: subs } = await supabase
           .from('push_subscriptions')
-          .delete()
-          .eq('user_id', sub.user_id)
-      }
-    }
+          .select('subscription')
+          .in('user_id', profiles.map(p => p.id))
 
-    // ——— Biberon ———
-    if (userSettings?.notif_enabled !== false) {
-      const { data: dernierBiberon } = await supabase
-        .from('events')
-        .select('*')
-        .eq('baby_id', baby.id)
-        .eq('type', 'biberon')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        if (!subs) continue
 
-      if (dernierBiberon) {
-        const delai = userSettings?.notif_delay_minutes ?? 15
-        const ageJours = Math.floor(
-          (Date.now() - new Date(baby.date_naissance).getTime()) / 86400000
-        )
-        const intervalleMin = getEffectiveBiberonIntervalMinutes(
-          userSettings ?? {},
-          ageJours,
-          baby.parcours ?? 'artificiel'
-        )
-        const minutesEcoulees =
-          (Date.now() - new Date(dernierBiberon.created_at).getTime()) / 60000
-        const restant = intervalleMin - minutesEcoulees
-
-        if (restant >= delai - 1 && restant <= delai + 1) {
-          await sendPush(
-            '🍼 Mon Bébébou',
-            `Biberon de ${prenom} dans ${delai} minutes — prépare-toi !`
-          )
-        }
-      }
-    }
-
-    // ——— Sieste ———
-    if (userSettings?.sieste_notif_enabled) {
-      const { data: siesteActive } = await supabase
-        .from('events')
-        .select('*')
-        .eq('baby_id', baby.id)
-        .eq('type', 'sieste_active')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (siesteActive) {
-        const minutesSieste =
-          (Date.now() - new Date(siesteActive.created_at).getTime()) / 60000
-        const siesteInterval = userSettings.sieste_notif_interval_minutes ?? 15
-        const siesteRemainder = minutesSieste % siesteInterval
-
-        if (
-          siesteRemainder >= siesteInterval - 1 &&
-          siesteRemainder <= siesteInterval + 1
-        ) {
-          await sendPush(
-            '😴 Sieste en cours',
-            `${prenom} dort depuis ${formatSiesteDuration(minutesSieste)}`
-          )
-        }
-
-        if (userSettings.sieste_alerte_enabled) {
-          const seuil = userSettings.sieste_alerte_minutes ?? 120
-          if (Math.floor(minutesSieste) === seuil) {
-            await sendPush(
-              '⏰ Sieste longue',
-              `${prenom} dort depuis ${Math.floor(minutesSieste / 60)}h — c'est long pour une sieste !`
+        for (const sub of subs) {
+          try {
+            await webpush.sendNotification(
+              sub.subscription,
+              JSON.stringify({
+                title: '🍼 Biberon dans 15 min',
+                body: 'Prochain biberon à ' + nextFeed.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+              })
             )
+            sent++
+          } catch (err) {
+            console.error('Push error:', err)
           }
         }
       }
     }
 
-    // ——— Nuit ———
-    if (userSettings?.nuit_notif_enabled) {
-      const { data: modeNuitData } = await supabase
-        .from('babies')
-        .select('mode_nuit')
-        .eq('id', baby.id)
-        .single()
-
-      if (modeNuitData?.mode_nuit?.actif) {
-        const heureDebut = new Date(modeNuitData.mode_nuit.heure_debut)
-        const minutesNuit = (Date.now() - heureDebut.getTime()) / 60000
-        const nuitInterval = userSettings.nuit_notif_interval_minutes ?? 60
-        const nuitRemainder = minutesNuit % nuitInterval
-
-        if (
-          nuitRemainder >= nuitInterval - 1 &&
-          nuitRemainder <= nuitInterval + 1
-        ) {
-          const heures = Math.floor(minutesNuit / 60)
-          await sendPush(
-            '🌙 Nuit en cours',
-            `${prenom} dort depuis ${heures}h — bonne nuit ! 😴`
-          )
-        }
-      }
-    }
-
-    if (userSettings?.nuit_alerte_courte_enabled) {
-      const seuilCourt = userSettings.nuit_alerte_courte_minutes ?? 360
-      const { data: derniereNuit } = await supabase
-        .from('events')
-        .select('*')
-        .eq('baby_id', baby.id)
-        .eq('type', 'nuit')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (derniereNuit?.quantity != null) {
-        const minutesSinceRecord =
-          (Date.now() - new Date(derniereNuit.created_at).getTime()) / 60000
-        if (
-          minutesSinceRecord <= 2 &&
-          derniereNuit.quantity < seuilCourt
-        ) {
-          const dureeH = Math.floor(derniereNuit.quantity / 60)
-          const dureeM = derniereNuit.quantity % 60
-          const dureeLabel =
-            dureeM > 0
-              ? `${dureeH}h${String(dureeM).padStart(2, '0')}`
-              : `${dureeH}h`
-          await sendPush(
-            '⚠️ Nuit courte',
-            `${prenom} n'a dormi que ${dureeLabel} — en dessous de votre seuil`
-          )
-        }
-      }
-    }
+    return Response.json({ sent })
+  } catch (err) {
+    console.error('Cron error:', err)
+    return Response.json({ error: String(err) }, { status: 500 })
   }
-
-  return NextResponse.json({ sent })
 }

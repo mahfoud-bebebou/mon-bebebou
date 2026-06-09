@@ -1,62 +1,33 @@
-const CACHE_NAME = 'bebebou-v2'
-self.addEventListener('install', event => {
+const CACHE_NAME = 'bebebou-v6'
+
+self.addEventListener('install', e => {
   self.skipWaiting()
 })
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames
-          .filter(name => name !== CACHE_NAME)
-          .map(name => caches.delete(name))
-      )
-    }).then(() => clients.claim())
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    ).then(() => clients.claim())
   )
 })
-// NE PAS intercepter les requêtes de navigation
-// Laisser le réseau gérer toutes les pages
-self.addEventListener('fetch', event => {
-  // Ignore les requêtes non-GET
-  if (event.request.method !== 'GET') return
-  
-  // Ignore les requêtes de navigation (pages HTML)
-  // pour éviter les conflits avec les redirections Next.js
-  if (event.request.mode === 'navigate') return
-  
-  // Cache uniquement les assets statiques (images, fonts, etc.)
-  const url = new URL(event.request.url)
-  if (
-    url.pathname.startsWith('/_next/static/') ||
-    url.pathname.startsWith('/logo-icon')
-  ) {
-    event.respondWith(
-      caches.open(CACHE_NAME).then(cache =>
-        cache.match(event.request).then(cached =>
-          cached || fetch(event.request).then(response => {
-            cache.put(event.request, response.clone())
-            return response
-          })
-        )
-      )
-    )
-  }
-})
-self.addEventListener('push', event => {
-  const data = event.data?.json() ?? {}
-  event.waitUntil(
-    self.registration.showNotification(
-      data.title || '🍼 Mon Bébébou',
-      {
-        body: data.body || "C'est l'heure du biberon !",
-        icon: '/logo-icon-192.png',
-        badge: '/logo-icon-192.png',
-        vibrate: [200, 100, 200],
-        data: { url: '/' }
-      }
-    )
+
+self.addEventListener('push', e => {
+  if (!e.data) return
+  const data = e.data.json()
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'Bébébou', {
+      body: data.body || '',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-72x72.png',
+      tag: 'biberon-rappel',
+      renotify: true,
+      data: data
+    })
   )
 })
-self.addEventListener('notificationclick', event => {
-  event.notification.close()
-  event.waitUntil(clients.openWindow('/'))
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close()
+  e.waitUntil(clients.openWindow('/'))
 })
