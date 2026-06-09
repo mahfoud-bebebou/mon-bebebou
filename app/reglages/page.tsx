@@ -425,7 +425,7 @@ export default function ReglagesPage() {
     }
 
     try {
-      await navigator.serviceWorker.register("/sw.js"); const perm = await Notification.requestPermission(); alert("Permission: " + perm);
+      await navigator.serviceWorker.register("/sw.js");
       const reg = await navigator.serviceWorker.ready;
 
       const existing = await reg.pushManager.getSubscription();
@@ -446,7 +446,7 @@ export default function ReglagesPage() {
         }),
       });
 
-      const resJson = await res.json().catch(()=>({})); alert("POST result: " + res.status + " " + JSON.stringify(resJson)); if (res.ok) {
+      if (res.ok) {
         setNotifEnabled(true);
         await saveSettings("notif_enabled", true);
         alert("✅ Rappels biberon activés !");
