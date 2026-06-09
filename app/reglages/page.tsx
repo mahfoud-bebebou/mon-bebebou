@@ -282,7 +282,7 @@ export default function ReglagesPage() {
             try {
               const newSub = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(await fetch("/api/push/vapid-key").then(r=>r.json()).then(d=>d.publicKey||VAPID_KEY)),
+                applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || VAPID_KEY),
               });
               console.log("New subscription:", newSub);
               await fetch("/api/push/subscribe", {
