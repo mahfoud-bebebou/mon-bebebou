@@ -365,8 +365,8 @@ function HomeSkeleton() {
 
 
 function SleepTimer({ coucher }: { coucher?: string }) {
-  const [elapsed, setElapsed] = React.useState('')
-  React.useEffect(() => {
+  const [elapsed, setElapsed] = useState('')
+  useEffect(() => {
     if (!coucher) return
     const update = () => {
       const diff = Date.now() - new Date(coucher).getTime()
@@ -2772,6 +2772,7 @@ export default function Home() {
                 >
                   🌙 {sommeilPrenom} est en mode nuit
                 </p>
+                <SleepTimer coucher={modeNuitData?.coucher ?? nuitCoucher} />
                 <button
                   type="button"
                   onClick={(e) => {
