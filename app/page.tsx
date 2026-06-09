@@ -475,6 +475,7 @@ export default function Home() {
   const [nuitLever, setNuitLever] = useState(toTimeInputValue());
   const [nuitReveilCount, setNuitReveilCount] = useState(0);
   const [nuitReveilRaisons, setNuitReveilRaisons] = useState<string[][]>([]);
+  const [pleurTime, setPleurTime] = useState(new Date().toTimeString().slice(0,5));
   const [coucheHeure, setCoucheHeure] = useState(() => getCurrentTimeValue());
   const [coucheType, setCoucheType] = useState<TypeCouche | null>(null);
   const [urineCouleur, setUrineCouleur] = useState("jaune_pale");
