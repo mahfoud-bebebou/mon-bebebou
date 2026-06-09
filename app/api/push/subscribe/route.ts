@@ -8,13 +8,13 @@ export async function POST(req: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
   try {
-    const { subscription, userId } = await req.json()
-    if (!subscription || !userId) {
+    const { subscription, userId, user_id } = await req.json(); const uid = userId || user_id
+    if (!subscription || !uid) {
       return Response.json({ error: 'Missing data' }, { status: 400 })
     }
     const { error } = await supabase
       .from('push_subscriptions')
-      .upsert({ user_id: userId, subscription, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+      .upsert({ user_id: uid, subscription, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
     if (error) return Response.json({ error: error.message }, { status: 500 })
     return Response.json({ ok: true })
   } catch (err) {
