@@ -277,7 +277,7 @@ export default function ReglagesPage() {
 
           if (sub) {
             setNotifEnabled(true);
-            await saveSettings("notif_enabled", true); saveSettingsToLocalStorage({...loadSettingsFromLocalStorage(), notif_enabled: true})
+            await saveSettings("notif_enabled", true); saveSettingsToLocalStorage({...(loadSettingsFromLocalStorage() || getDefaultUserSettings()), notif_enabled: true})
           } else {
             try {
               const newSub = await reg.pushManager.subscribe({
@@ -443,7 +443,7 @@ export default function ReglagesPage() {
         body: JSON.stringify({ user_id: userId }),
       });
       setNotifEnabled(false);
-      await saveSettings("notif_enabled", false); saveSettingsToLocalStorage({...loadSettingsFromLocalStorage(), notif_enabled: false})
+      await saveSettings("notif_enabled", false); saveSettingsToLocalStorage({...(loadSettingsFromLocalStorage() || getDefaultUserSettings()), notif_enabled: false})
       return;
     }
 
