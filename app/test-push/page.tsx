@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 
-const VAPID_KEY = await fetch('/api/push/vapid-key').then(r => r.json()).then(d => d.publicKey)
+const VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
 
 function urlBase64ToUint8Array(base64String: string) {
   const b64 = base64String.replace(/-/g, '+').replace(/_/g, '/')
