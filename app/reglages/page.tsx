@@ -256,13 +256,16 @@ export default function ReglagesPage() {
 
   useEffect(() => {
     const checkNotifStatus = async () => {
-      if (!userId) return;
-      const { data: sub } = await supabase
-        .from('push_subscriptions')
-        .select('user_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      setNotifEnabled(!!sub);
+      if (typeof window === 'undefined') return;
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) { setNotifEnabled(false); return; }
+        const sub = await reg.pushManager.getSubscription();
+        setNotifEnabled(!!sub);
+      } catch(e) {
+        setNotifEnabled(false);
+      }
     }
 
     void checkNotifStatus();
