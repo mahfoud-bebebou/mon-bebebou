@@ -368,8 +368,16 @@ function SleepTimer({ coucher }: { coucher?: string }) {
   const [elapsed, setElapsed] = useState('')
   useEffect(() => {
     if (!coucher) return
+    const getCoucherDate = () => {
+      if (coucher.includes('T') || coucher.includes('-')) return new Date(coucher)
+      const [h, m] = coucher.split(':').map(Number)
+      const d = new Date()
+      d.setHours(h, m, 0, 0)
+      if (d.getTime() > Date.now()) d.setDate(d.getDate() - 1)
+      return d
+    }
     const update = () => {
-      const diff = Date.now() - new Date(coucher).getTime()
+      const diff = Date.now() - getCoucherDate().getTime()
       const h = Math.floor(diff / 3600000)
       const m = Math.floor((diff % 3600000) / 60000)
       if (h > 0) setElapsed(h + 'h ' + m + 'min')
