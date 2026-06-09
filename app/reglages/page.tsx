@@ -256,6 +256,11 @@ export default function ReglagesPage() {
 
   useEffect(() => {
     const checkNotifStatus = async () => {
+      // Utilise Supabase comme source de vérité unique
+      const { data: sub } = await supabase.from('push_subscriptions').select('user_id').eq('user_id', userId).single();
+      setNotifEnabled(!!sub);
+      return;
+      // ancien code désactivé
       if (typeof window === "undefined") return;
       if (!("Notification" in window)) return;
       if (!userId || !babyId) return;
