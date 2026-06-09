@@ -431,10 +431,10 @@ export default function ReglagesPage() {
       const existing = await reg.pushManager.getSubscription();
       if (existing) await existing.unsubscribe();
 
-      const sub = await reg.pushManager.subscribe({
+      let sub; try { sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || VAPID_KEY),
-      });
+      }); } catch(e) { alert("Subscribe error: " + e.message); return; }
 
       const res = await fetch("/api/push/subscribe", {
         method: "POST",
