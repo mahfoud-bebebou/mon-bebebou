@@ -60,7 +60,7 @@ export default function TestPush() {
       const reg = await navigator.serviceWorker.ready
       addLog('✅ Service Worker prêt')
 
-      const existing = await reg.pushManager.getSubscription()
+      const registrations = await navigator.serviceWorker.getRegistrations(); for (const r of registrations) { const s = await r.pushManager.getSubscription(); if (s) await s.unsubscribe(); await r.unregister(); } await navigator.serviceWorker.register("/sw.js"); const reg2 = await navigator.serviceWorker.ready; const existing = await reg2.pushManager.getSubscription()
       if (existing) {
         await existing.unsubscribe()
         addLog('Ancien abonnement supprimé')
