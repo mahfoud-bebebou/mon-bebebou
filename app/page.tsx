@@ -2772,7 +2772,6 @@ export default function Home() {
                 >
                   🌙 {sommeilPrenom} est en mode nuit
                 </p>
-                <SleepTimer coucher={modeNuitData?.coucher ?? nuitCoucher} />
                 <button
                   type="button"
                   onClick={(e) => {
