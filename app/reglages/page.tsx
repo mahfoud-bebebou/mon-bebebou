@@ -22,7 +22,7 @@ import {
   type UserSettings,
 } from "@/lib/user-settings";
 
-const VAPID_KEY =
+let VAPID_KEY =
   "BBn5ndMgtpf-O8JsGqY0X2qy01UilKtfCrbajxN4PN4RNfaPeHkiZxz4aYxR-BF1Wi0Ldqv0XJoygSUsTiNGQ58";
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -282,7 +282,7 @@ export default function ReglagesPage() {
             try {
               const newSub = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
+                applicationServerKey: urlBase64ToUint8Array(await fetch("/api/push/vapid-key").then(r=>r.json()).then(d=>d.publicKey||VAPID_KEY)),
               });
               console.log("New subscription:", newSub);
               await fetch("/api/push/subscribe", {
@@ -475,7 +475,7 @@ export default function ReglagesPage() {
 
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
+        applicationServerKey: urlBase64ToUint8Array(await fetch("/api/push/vapid-key").then(r=>r.json()).then(d=>d.publicKey||VAPID_KEY)),
       });
 
       const res = await fetch("/api/push/subscribe", {
