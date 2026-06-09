@@ -425,7 +425,7 @@ export default function ReglagesPage() {
     }
 
     try {
-      await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.register("/sw.js"); alert("VAPID: " + (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "VIDE").substring(0,20));
       const reg = await navigator.serviceWorker.ready;
 
       const existing = await reg.pushManager.getSubscription();
