@@ -446,7 +446,7 @@ export default function ReglagesPage() {
         }),
       });
 
-      if (res.ok) {
+      const resJson = await res.json().catch(()=>({})); alert("POST result: " + res.status + " " + JSON.stringify(resJson)); if (res.ok) {
         setNotifEnabled(true);
         await saveSettings("notif_enabled", true);
         alert("✅ Rappels biberon activés !");
