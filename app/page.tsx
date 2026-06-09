@@ -2773,6 +2773,7 @@ export default function Home() {
                   🌙 {sommeilPrenom} est en mode nuit
                 </p>
                 <button
+                <SleepTimer coucher={modeNuitData?.coucher ?? nuitCoucher} />
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
