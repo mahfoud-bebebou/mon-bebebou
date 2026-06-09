@@ -1,4 +1,3 @@
-  const [pleurTime, setPleurTime] = useState(new Date().toTimeString().slice(0,5));
 'use client'
 
 import {
