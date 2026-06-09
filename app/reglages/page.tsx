@@ -226,7 +226,7 @@ export default function ReglagesPage() {
 
   const persist = useCallback(
     async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
-      if (!userId) return; alert("checkNotif userId: " + userId.substring(0,8));
+      if (!userId) return;
       const supabase = createSupabaseClient();
       const updated = await saveUserSetting(
         supabase,
