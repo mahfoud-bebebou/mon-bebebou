@@ -19,33 +19,22 @@ export async function GET() {
     const in16 = new Date(now.getTime() + 16 * 60 * 1000)
     const { data: events } = await supabase
       .from('events')
-      .select('baby_id, created_at, data')
+      .select('user_id, created_at')
       .eq('type', 'biberon')
       .gte('created_at', new Date(now.getTime() - 4 * 60 * 60 * 1000).toISOString())
       .order('created_at', { ascending: false })
     if (!events || events.length === 0) return Response.json({ sent: 0 })
     const latest: Record<string, typeof events[0]> = {}
-    for (const e of events) {
-      if (!latest[e.baby_id]) latest[e.baby_id] = e
-    }
+    for (const e of events) { if (!latest[e.user_id]) latest[e.user_id] = e }
     let sent = 0
-    for (const [babyId, event] of Object.entries(latest)) {
-      const intervalMinutes = event.data?.intervalMinutes ?? 180
-      const lastFeed = new Date(event.created_at)
-      const nextFeed = new Date(lastFeed.getTime() + intervalMinutes * 60 * 1000)
+    for (const [userId, event] of Object.entries(latest)) {
+      const nextFeed = new Date(new Date(event.created_at).getTime() + 180 * 60 * 1000)
       if (nextFeed >= in15 && nextFeed <= in16) {
-        const { data: baby } = await supabase.from('babies').select('family_id').eq('id', babyId).single()
-        if (!baby) continue
-        const { data: profiles } = await supabase.from('profiles').select('id').eq('family_id', baby.family_id)
-        if (!profiles) continue
-        const { data: subs } = await supabase.from('push_subscriptions').select('subscription').in('user_id', profiles.map(p => p.id))
+        const { data: subs } = await supabase.from('push_subscriptions').select('subscription').eq('user_id', userId)
         if (!subs) continue
         for (const sub of subs) {
           try {
-            await webpush.sendNotification(sub.subscription, JSON.stringify({
-              title: '🍼 Biberon dans 15 min',
-              body: 'Prochain biberon à ' + nextFeed.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-            }))
+            await webpush.sendNotification(sub.subscription, JSON.stringify({ title: '🍼 Biberon dans 15 min', body: 'Prochain biberon à ' + nextFeed.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }))
             sent++
           } catch (err) { console.error('Push error:', err) }
         }
