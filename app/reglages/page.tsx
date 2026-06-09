@@ -256,61 +256,14 @@ export default function ReglagesPage() {
 
   useEffect(() => {
     const checkNotifStatus = async () => {
-      // Utilise Supabase comme source de vérité unique
-      const { data: sub } = await supabase.from('push_subscriptions').select('user_id').eq('user_id', userId).single();
+      if (!userId) return;
+      const { data: sub } = await supabase
+        .from('push_subscriptions')
+        .select('user_id')
+        .eq('user_id', userId)
+        .single();
       setNotifEnabled(!!sub);
-      return;
-      // ancien code désactivé
-      if (typeof window === "undefined") return;
-      if (!("Notification" in window)) return;
-      if (!userId || !babyId) return;
-
-      setNotifDenied(Notification.permission === "denied");
-
-      if (Notification.permission === "granted") {
-        if ("serviceWorker" in navigator) {
-          console.log("VAPID key:", VAPID_KEY);
-          console.log("SW ready:", "serviceWorker" in navigator);
-          console.log("PushManager:", "PushManager" in window);
-          console.log("Notification permission:", Notification.permission);
-
-          await navigator.serviceWorker.register("/sw.js");
-          const reg = await navigator.serviceWorker.ready;
-          console.log("Registration:", reg);
-          const sub = await reg.pushManager.getSubscription();
-          console.log("Existing subscription:", sub);
-
-          const savedPref = loadSettingsFromLocalStorage()?.notif_enabled; if (sub && savedPref !== false) {
-            setNotifEnabled(true);
-            await saveSettings("notif_enabled", true); saveSettingsToLocalStorage({...(loadSettingsFromLocalStorage() || getDefaultUserSettings()), notif_enabled: true})
-          } else {
-            try {
-              const newSub = await reg.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || VAPID_KEY),
-              });
-              console.log("New subscription:", newSub);
-              await fetch("/api/push/subscribe", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  subscription: newSub.toJSON(),
-                  baby_id: babyId,
-                  user_id: userId,
-                }),
-              });
-              setNotifEnabled(true);
-              await saveSettings("notif_enabled", true);
-            } catch (err) {
-              console.error("Subscribe failed:", err);
-              setNotifEnabled(false);
-            }
-          }
-        }
-      } else {
-        setNotifEnabled(false);
-      }
-    };
+    }
 
     void checkNotifStatus();
   }, [userId, babyId]);
