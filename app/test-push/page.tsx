@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 
-const VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BCUTKFGmJ8DHGazRtKVj2RsXDSe0heBdk3imiPBTYSirGf9u6KvtN4TzmhvN4FRZ-XQn4Gk5CBi8D92BbpTsyhs'
+const VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BBn5ndMgtpf-O8JsGqY0X2qy01UilKtfCrbajxN4PN4RNfaPeHkiZxz4aYxR-BF1Wi0Ldqv0XJoygSUsTiNGQ58'
 
 function urlBase64ToUint8Array(base64String: string) {
   const b64 = base64String.replace(/-/g, '+').replace(/_/g, '/')

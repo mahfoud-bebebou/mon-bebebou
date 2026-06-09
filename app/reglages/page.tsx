@@ -23,7 +23,7 @@ import {
 } from "@/lib/user-settings";
 
 const VAPID_KEY =
-  "BCUTKFGmJ8DHGazRtKVj2RsXDSe0heBdk3imiPBTYSirGf9u6KvtN4TzmhvN4FRZ-XQn4Gk5CBi8D92BbpTsyhs";
+  "BBn5ndMgtpf-O8JsGqY0X2qy01UilKtfCrbajxN4PN4RNfaPeHkiZxz4aYxR-BF1Wi0Ldqv0XJoygSUsTiNGQ58";
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
