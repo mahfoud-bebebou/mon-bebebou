@@ -1,3 +1,4 @@
+  const [pleurTime, setPleurTime] = useState(new Date().toTimeString().slice(0,5));
 'use client'
 
 import {
@@ -1608,6 +1609,7 @@ export default function Home() {
         break;
       case "pleure":
         setActiveModal("pleure");
+          setPleurTime(new Date().toTimeString().slice(0,5));
         break;
     }
   }
@@ -4384,12 +4386,13 @@ export default function Home() {
             <p className="mt-1 text-sm text-[#8B7FA0]">
               Quelle pourrait être la cause ?
             </p>
+            <div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}><span style={{fontSize:13,color:"#8B7FA0"}}>Heure :</span><input type="time" value={pleurTime} onChange={e=>setPleurTime(e.target.value)} style={{fontSize:14,border:"1px solid #ddd",borderRadius:8,padding:"4px 8px"}} /></div>
             <ul className="mt-4 space-y-2">
               {pleureSuggestions.map((suggestion) => (
                 <li key={suggestion}>
                   <button
                     type="button"
-                    onClick={() => addEvent("pleure", suggestion)}
+                    onClick={() => { const [h,m] = pleurTime.split(":"); const d = new Date(); d.setHours(+h,+m,0,0); addEvent("pleure", suggestion, undefined, {createdAt: d.toISOString()}) }}
                     disabled={saving}
                     className="w-full rounded-2xl px-4 py-3 text-left text-sm font-bold text-white disabled:opacity-60"
                     style={{ backgroundColor: "#E8406A" }}
