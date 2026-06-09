@@ -275,7 +275,7 @@ export default function ReglagesPage() {
           const sub = await reg.pushManager.getSubscription();
           console.log("Existing subscription:", sub);
 
-          if (sub) {
+          const savedPref = loadSettingsFromLocalStorage()?.notif_enabled; if (sub && savedPref !== false) {
             setNotifEnabled(true);
             await saveSettings("notif_enabled", true); saveSettingsToLocalStorage({...(loadSettingsFromLocalStorage() || getDefaultUserSettings()), notif_enabled: true})
           } else {
