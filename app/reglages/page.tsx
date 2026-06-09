@@ -277,7 +277,7 @@ export default function ReglagesPage() {
 
           if (sub) {
             setNotifEnabled(true);
-            await saveSettings("notif_enabled", true);
+            await saveSettings("notif_enabled", true); try { const ls = JSON.parse(localStorage.getItem("bebebou_settings") || "{}"); ls.notif_enabled = true; localStorage.setItem("bebebou_settings", JSON.stringify(ls)); } catch(e) {}
           } else {
             try {
               const newSub = await reg.pushManager.subscribe({
@@ -443,7 +443,7 @@ export default function ReglagesPage() {
         body: JSON.stringify({ user_id: userId }),
       });
       setNotifEnabled(false);
-      await saveSettings("notif_enabled", false);
+      await saveSettings("notif_enabled", false); try { const ls = JSON.parse(localStorage.getItem("bebebou_settings") || "{}"); ls.notif_enabled = false; localStorage.setItem("bebebou_settings", JSON.stringify(ls)); } catch(e) {}
       return;
     }
 
