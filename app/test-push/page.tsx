@@ -58,13 +58,22 @@ export default function TestPush() {
 
     try {
       await new Promise(resolve => setTimeout(resolve, 2000))
-    const reg = await navigator.serviceWorker.ready
+
+      // Ne pas désenregistrer le SW - juste vider l'abonnement push
+      let reg = await navigator.serviceWorker.getRegistration()
+      if (!reg) {
+        reg = await navigator.serviceWorker.register('/sw.js')
+        addLog('SW enregistré ✅')
+      } else {
+        addLog('SW déjà actif ✅')
+      }
+      await navigator.serviceWorker.ready
       addLog('✅ Service Worker prêt')
 
-      const registrations = await navigator.serviceWorker.getRegistrations(); for (const r of registrations) { const s = await r.pushManager.getSubscription(); if (s) await s.unsubscribe(); await r.unregister(); } await navigator.serviceWorker.register("/sw.js"); const reg2 = await navigator.serviceWorker.ready; const existing = await reg2.pushManager.getSubscription()
+      const existing = await reg.pushManager.getSubscription()
       if (existing) {
         await existing.unsubscribe()
-        addLog('Ancien abonnement supprimé')
+        addLog('Ancien abonnement supprimé ✅')
       }
 
       const sub = await reg.pushManager.subscribe({
