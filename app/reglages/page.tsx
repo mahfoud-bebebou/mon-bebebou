@@ -261,7 +261,7 @@ export default function ReglagesPage() {
         .from('push_subscriptions')
         .select('user_id')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
       setNotifEnabled(!!sub);
     }
 
