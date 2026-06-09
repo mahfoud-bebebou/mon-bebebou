@@ -362,27 +362,7 @@ function HomeSkeleton() {
 }
 
 
-function SleepTimer({ coucher }: { coucher?: string }) {
-  const [elapsed, setElapsed] = React.useState('')
-  React.useEffect(() => {
-    if (!coucher) return
-    const update = () => {
-      const diff = Date.now() - new Date(coucher).getTime()
-      const h = Math.floor(diff / 3600000)
-      const m = Math.floor((diff % 3600000) / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setElapsed(h > 0 ? `${h}h ${m}min` : `${m}min ${s}s`)
-    }
-    update()
-    const id = setInterval(update, 1000)
-    return () => clearInterval(id)
-  }, [coucher])f (!coucher || !elapsed) return null
-  return (
-    <p style={{ textAlign: 'center', fontSize: 13, color: '#8b7db5', marginTop: 4, marginBottom: 0 }}>
-      Dort depuis {elapsed}
-    </p>
-  )
-}
+
 
 function SleepTimer({ coucher }: { coucher?: string }) {
   const [elapsed, setElapsed] = React.useState('')
@@ -392,19 +372,15 @@ function SleepTimer({ coucher }: { coucher?: string }) {
       const diff = Date.now() - new Date(coucher).getTime()
       const h = Math.floor(diff / 3600000)
       const m = Math.floor((diff % 3600000) / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setElapsed(h > 0 ? `${h}h ${m}min` : `${m}min ${s}s`)
+      if (h > 0) setElapsed(h + 'h ' + m + 'min')
+      else setElapsed(m + 'min')
     }
     update()
-    const id = setInterval(update, 1000)
+    const id = setInterval(update, 60000)
     return () => clearInterval(id)
   }, [coucher])
   if (!coucher || !elapsed) return null
-  return (
-    <p style={{ textAlign: 'center', fontSize: 13, color: '#8b7db5', marginTop: 4, marginBottom: 0 }}>
-      Dort depuis {elapsed}
-    </p>
-  )
+  return <p style={{ textAlign: 'center', fontSize: 13, color: '#8b7db5', marginTop: 4, marginBottom: 0 }}>Dort depuis {elapsed}</p>
 }
 
 export default function Home() {
