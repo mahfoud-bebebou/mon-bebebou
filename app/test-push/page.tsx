@@ -4,14 +4,10 @@ import { useState, useEffect } from 'react'
 const VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BCUTKFGmJ8DHGazRtKVj2RsXDSe0heBdk3imiPBTYSirGf9u6KvtN4TzmhvN4FRZ-XQn4Gk5CBi8D92BbpTsyhs'
 
 function urlBase64ToUint8Array(base64String: string) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const rawData = window.atob(base64)
-  const outputArray = new Uint8Array(rawData.length)
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i)
-  }
-  return outputArray
+  const b64 = base64String.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=')
+  const raw = atob(padded)
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
 }
 
 export default function TestPush() {
