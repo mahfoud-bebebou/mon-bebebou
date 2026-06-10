@@ -1652,10 +1652,28 @@ function SuiviPageContent() {
                 borderLeft: "2px solid #F0E8F5",
               }}
             >
-              {evenementsFiltres.map((event, index) =>
-                renderTimelineRow(event, index, evenementsFiltres.length)
-              )}
-            </ul>
+            {(() => {
+              // Groupe par jour
+              const groupes: Record<string, typeof evenementsFiltres> = {}
+              evenementsFiltres.forEach(event => {
+                const d = new Date(event.created_at)
+                const key = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+                if (!groupes[key]) groupes[key] = []
+                groupes[key].push(event)
+              })
+              return Object.entries(groupes).map(([jour, evts]) => (
+                <li key={jour}>
+                  <div style={{ padding: '8px 16px 4px', fontSize: 12, fontWeight: 700, color: '#8B7FA0', textTransform: 'uppercase', letterSpacing: 1, background: '#F9F5FF', borderRadius: 8, margin: '8px 0 4px' }}>
+                    {jour}
+                  </div>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {evts.map((event, index) =>
+                      renderTimelineRow(event, index, evts.length)
+                    )}
+                  </ul>
+                </li>
+              ))
+            })()}
           )}
         </section>
       </div>
